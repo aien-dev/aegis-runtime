@@ -1,7 +1,7 @@
 # OpenClaw Mojo 1.1 SIMD Vector Acceleration Kernel
-# High performance token tensor manipulation and vector similarity for Grace Blackwell GB10
+# Token tensor operations and vector similarity for Grace Blackwell GB10
 
-from std.math import sqrt
+from std.math import log, sqrt
 
 @export("openclaw_simd_version")
 def openclaw_simd_version() abi("C") -> Int32:
@@ -32,11 +32,11 @@ def openclaw_simd_accumulate(base_val: Float32, scale: Float32, steps: Int32) ab
 @export("openclaw_token_entropy_simd")
 def openclaw_token_entropy_simd(p0: Float32, p1: Float32, p2: Float32, p3: Float32) abi("C") -> Float32:
     var probs = SIMD[DType.float32, 4](p0, p1, p2, p3)
-    var log_probs = SIMD[DType.float32, 4](0.0, 0.0, 0.0, 0.0)
+    var entropy = SIMD[DType.float32, 4](0.0, 0.0, 0.0, 0.0)
     for i in range(4):
         if probs[i] > 0.00001:
-            log_probs[i] = probs[i] * (probs[i] - 1.0)
-    return Float32(log_probs.reduce_add())
+            entropy[i] = -probs[i] * log(probs[i])
+    return Float32(entropy.reduce_add())
 
 @export("openclaw_token_projection_simd")
 def openclaw_token_projection_simd(

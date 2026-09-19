@@ -1,0 +1,241 @@
+{
+  "entropy": [
+    {
+      "name": "uniform_2",
+      "probs": [
+        0.5,
+        0.5,
+        0.0,
+        0.0
+      ],
+      "expected": 0.6931471805599453
+    },
+    {
+      "name": "uniform_4",
+      "probs": [
+        0.25,
+        0.25,
+        0.25,
+        0.25
+      ],
+      "expected": 1.3862943611198906
+    },
+    {
+      "name": "certainty",
+      "probs": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "expected": 0.0
+    },
+    {
+      "name": "skewed",
+      "probs": [
+        0.7,
+        0.2,
+        0.08,
+        0.02
+      ],
+      "expected": 0.8518587948971561
+    },
+    {
+      "name": "sparse_single",
+      "probs": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "expected": 0.0
+    },
+    {
+      "name": "all_zero",
+      "probs": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "expected": 0.0
+    }
+  ],
+  "cosine": [
+    {
+      "name": "identical",
+      "a": [
+        1.0,
+        2.0,
+        3.0,
+        4.0
+      ],
+      "b": [
+        1.0,
+        2.0,
+        3.0,
+        4.0
+      ],
+      "expected": 1.0
+    },
+    {
+      "name": "opposite",
+      "a": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        -1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "expected": -1.0
+    },
+    {
+      "name": "orthogonal",
+      "a": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "expected": 0.0
+    },
+    {
+      "name": "zero_vector",
+      "a": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.0,
+        2.0,
+        3.0,
+        4.0
+      ],
+      "expected": 0.0
+    },
+    {
+      "name": "mixed_positive_negative",
+      "a": [
+        3.0,
+        -4.0,
+        5.0,
+        -1.0
+      ],
+      "b": [
+        3.0,
+        -4.0,
+        5.0,
+        -1.0
+      ],
+      "expected": 0.9999999999999999
+    }
+  ],
+  "projection": [
+    {
+      "name": "standard",
+      "tokens": [
+        1.0,
+        2.0,
+        3.0,
+        4.0
+      ],
+      "weights": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "bias": 1.0,
+      "expected": 6.0
+    },
+    {
+      "name": "zero_bias",
+      "tokens": [
+        2.0,
+        4.0,
+        6.0,
+        8.0
+      ],
+      "weights": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "bias": 0.0,
+      "expected": 6.0
+    },
+    {
+      "name": "negative_weights",
+      "tokens": [
+        1.0,
+        -1.0,
+        2.0,
+        -2.0
+      ],
+      "weights": [
+        0.5,
+        -0.5,
+        0.5,
+        -0.5
+      ],
+      "bias": 2.5,
+      "expected": 5.5
+    }
+  ],
+  "temperature": [
+    {
+      "name": "standard_half",
+      "logit": 2.0,
+      "temp": 0.5,
+      "expected": 4.0
+    },
+    {
+      "name": "standard_double",
+      "logit": 10.0,
+      "temp": 2.0,
+      "expected": 5.0
+    },
+    {
+      "name": "zero_temp_guard",
+      "logit": 5.0,
+      "temp": 0.0,
+      "expected": 5.0
+    },
+    {
+      "name": "near_zero_temp_guard",
+      "logit": 5.0,
+      "temp": 5e-05,
+      "expected": 5.0
+    }
+  ],
+  "accumulate": [
+    {
+      "name": "short_acc",
+      "base_val": 1.0,
+      "scale": 1.05,
+      "steps": 5,
+      "expected": 23.410156139003135
+    },
+    {
+      "name": "single_step",
+      "base_val": 2.0,
+      "scale": 1.1,
+      "steps": 1,
+      "expected": 18.360000000000003
+    }
+  ]
+}
