@@ -11,6 +11,7 @@ use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser)]
 #[command(name = "openclaw")]
+#[command(version = "0.2.0")]
 #[command(about = "Ultra-high-performance sovereign agent runtime in Rust, Mojo, and Modular MAX", long_about = None)]
 struct Cli {
     #[command(subcommand)]

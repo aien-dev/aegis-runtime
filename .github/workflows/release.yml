@@ -1,0 +1,51 @@
+name: OpenClaw Binary Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Release (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+          - os: ubuntu-latest
+            arch: x86_64
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Binary
+        run: cargo build --release
+
+      - name: Package Binary
+        run: |
+          mkdir -p dist
+          cp target/release/openclaw dist/openclaw
+          chmod +x dist/openclaw
+          tar -czf openclaw-linux-${{ matrix.arch }}.tar.gz -C dist openclaw
+          sha256sum openclaw-linux-${{ matrix.arch }}.tar.gz > openclaw-linux-${{ matrix.arch }}.tar.gz.sha256
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            openclaw-linux-${{ matrix.arch }}.tar.gz
+            openclaw-linux-${{ matrix.arch }}.tar.gz.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

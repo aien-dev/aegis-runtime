@@ -61,7 +61,7 @@ async fn test_gateway_health_endpoint() {
         .unwrap();
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["status"], "healthy");
-    assert_eq!(body["engine"], "openclaw-rs/0.1.0");
+    assert_eq!(body["engine"], "openclaw-rs/0.2.0");
     assert_eq!(body["database_mode"], "sqlite-wal");
     assert_eq!(body["zero_disk_secrets"], true);
 }

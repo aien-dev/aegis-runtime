@@ -3,3 +3,5 @@ target/
 *.sqlite-wal
 *.sqlite-shm
 .env*
+*.jsonl
+.crumb
