@@ -64,7 +64,7 @@ pub async fn health_handler(State(state): State<GatewayState>) -> impl IntoRespo
 
     Json(HealthResponse {
         status: "healthy",
-        engine: "openclaw-rs/0.1.0",
+        engine: "openclaw-rs/0.2.0",
         uptime_seconds: uptime,
         local_model: model,
         heartbeat_interval_seconds: state.heartbeat.interval_secs(),
