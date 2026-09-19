@@ -1,0 +1,39 @@
+[package]
+name = "openclaw"
+version = "0.2.0"
+edition = "2021"
+authors = ["AIEN Sovereign Systems & Contributors <sovereign@aien.dev>"]
+license = "Apache-2.0 WITH LLVM-exception"
+description = "Ultra-high-performance sovereign agent runtime, 0.5ms Axum WebSocket gateway, autonomous heartbeat loop, and Modular MAX local inference engine on Grace Blackwell GB10"
+repository = "https://github.com/aien-dev/openclaw-rs"
+
+[dependencies]
+tokio = { version = "1.40", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+axum = { version = "0.7", features = ["json", "macros", "ws"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive"] }
+rusqlite = { version = "0.31", features = ["bundled", "bundled-full"] }
+futures-util = "0.3"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+libloading = "0.8"
+anyhow = "1.0.104"
+
+[dev-dependencies]
+tempfile = "3.17"
+tokio-tungstenite = "0.24"
+
+[[bin]]
+name = "openclaw"
+path = "src/main.rs"
+
+[lib]
+name = "openclaw"
+path = "src/lib.rs"
