@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "openclaw-rs",
+  "version": "0.1.0",
+  "description": "Ultra-high-performance sovereign agent runtime in Rust, Mojo, and Modular MAX",
+  "repository": "https://github.com/aien-dev/openclaw-rs",
+  "license": "SRCL-1.0",
+  "system": {
+    "architecture": "aarch64-unknown-linux-gnu",
+    "hardware_target": "NVIDIA DGX Spark Grace Blackwell GB10",
+    "pure_native": true,
+    "runtimes": ["rust", "mojo"]
+  },
+  "capabilities": [
+    "sub_millisecond_axum_gateway",
+    "proactive_heartbeat_loop",
+    "modular_max_local_inference",
+    "mojo_simd_vector_kernels",
+    "hardware_tpm_vault_integration",
+    "sqlite_wal_persistence"
+  ],
+  "ports": {
+    "gateway": 18096,
+    "modular_max": 18006,
+    "cortex_memory": 18080
+  },
+  "invariants": {
+    "zero_disk_secrets": true,
+    "unslop_certified": true,
+    "pure_compiled_binaries": true
+  }
+}
