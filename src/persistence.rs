@@ -37,9 +37,9 @@ impl Database {
     pub fn open(path: &Path) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(path)?;
 
+        let _ = conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()));
         conn.execute_batch(
             "
-            PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
             PRAGMA temp_store = MEMORY;
             PRAGMA cache_size = -64000;
@@ -58,9 +58,9 @@ impl Database {
 
     pub fn open_in_memory() -> Result<Self, rusqlite::Error> {
         let conn = Connection::open_in_memory()?;
+        let _ = conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()));
         conn.execute_batch(
             "
-            PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
             PRAGMA temp_store = MEMORY;
             PRAGMA cache_size = -64000;
