@@ -36,6 +36,15 @@ enum Commands {
         #[arg(long, default_value = "openclaw.sqlite")]
         db_path: String,
     },
+    /// Run persistent background heartbeat daemon loop
+    Heartbeat {
+        #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
+        max_url: String,
+        #[arg(long, default_value = "openclaw.sqlite")]
+        db_path: String,
+        #[arg(long, default_value = "30")]
+        heartbeat_secs: u64,
+    },
     /// Send a direct prompt to local Modular MAX inference engine
     Ask {
         prompt: String,
@@ -122,6 +131,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let heartbeat = HeartbeatEngine::new(60, db);
             let receipt = heartbeat.pulse_once().await;
             info!("Heartbeat tick completed successfully: {:?}", receipt.notes);
+        }
+        Commands::Heartbeat {
+            max_url,
+            db_path,
+            heartbeat_secs,
+        } => {
+            info!("Initializing OpenClaw persistent heartbeat daemon on Grace Blackwell GB10...");
+            let db = Arc::new(Database::open(Path::new(&db_path))?);
+            let inference = Arc::new(InferenceEngine::new(Some(max_url), None));
+            let heartbeat = Arc::new(HeartbeatEngine::with_inference(
+                heartbeat_secs,
+                db.clone(),
+                inference.clone(),
+            ));
+
+            info!(
+                "Starting OpenClaw persistent heartbeat daemon loop (interval: {}s)...",
+                heartbeat_secs
+            );
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(heartbeat_secs));
+            loop {
+                interval.tick().await;
+                let receipt = heartbeat.pulse_once().await;
+                info!(
+                    "Heartbeat pulse #{}: status={}, tasks={}, actions={}",
+                    receipt.tick_id, receipt.status, receipt.tasks_scanned, receipt.actions_dispatched
+                );
+            }
         }
         Commands::Ask { prompt, max_url } => {
             let inference = InferenceEngine::new(Some(max_url), None);

@@ -171,6 +171,33 @@ impl HeartbeatEngine {
         let _ = self.db.record_heartbeat_tick(&receipt);
         let _ = self.tx_pulse.send(receipt.clone());
 
+        // Record operational pulse event to the Crumb ledger (.crumb)
+        let crumb_bin = if std::path::Path::new("/home/drakestapleton/.local/bin/spark-crumbs").exists() {
+            "/home/drakestapleton/.local/bin/spark-crumbs"
+        } else {
+            "spark-crumbs"
+        };
+        let _ = Command::new(crumb_bin)
+            .args([
+                "record",
+                "--agent",
+                "OpenClaw",
+                "--action",
+                "heartbeat:pulse",
+                "--target",
+                "openclaw-heartbeat",
+                "--intent",
+                "Sovereign runtime heartbeat pulse",
+                "--vector",
+                &format!(
+                    "Tick #{} nominal | tasks: {} | actions: {}",
+                    tick, tasks_count, actions
+                ),
+                ".",
+            ])
+            .output()
+            .await;
+
         receipt
     }
 
