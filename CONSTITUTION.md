@@ -57,11 +57,8 @@ Defects and bloated dependencies directly harm the user when software protects h
 2. Core runtime engines must be compiled native Rust and high-speed Mojo. Interpreted environments are restricted strictly to neural graph definitions required by weight loaders.
 3. Every microservice must run lean, deterministic, and fast, maximizing hardware efficiency on local silicon.
 
-### Section 2. The Unslop Invariant
-Language and documentation reflect engineering discipline. We demand uncompromising clarity.
-1. Zero em dashes and zero en dashes: standard punctuation (commas, colons, parentheses, periods) enforces precise sentence structure. Plain hyphens (-) are permitted only for compound terms and CLI flags.
-2. Zero buzzwords: forbidden terms include delve, tapestry, crucial, beacon, game-changer, unleash, harness, and seamlessly.
-3. Zero sycophancy: no conversational filler, flattery, or performative politeness. State facts directly. Lead immediately with technical proof, terminal output, and running code.
+### Section 2. Clarity and Technical Precision
+Technical communication, documentation, and pull requests must be direct, factual, and substantiated by test verification, telemetry data, or running code. We prioritize clarity, technical proof, and verifiable results over marketing rhetoric and conversational filler.
 
 ### Section 3. Stigmergic Filesystem Anchoring
 1. Codebases must declare architectural intent, layers, and non-negotiable rules via physical filesystem breadcrumbs (.crumb).
