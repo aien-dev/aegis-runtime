@@ -12,7 +12,7 @@ use tracing_subscriber::FmtSubscriber;
 #[derive(Parser)]
 #[command(name = "openclaw")]
 #[command(version = "0.2.0")]
-#[command(about = "Ultra-high-performance sovereign agent runtime in Rust, Mojo, and Modular MAX", long_about = None)]
+#[command(about = "Native sovereign agent runtime in Rust, Mojo, and Modular MAX", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -237,7 +237,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             let entropy = MojoSimdBridge::token_entropy([0.7, 0.2, 0.08, 0.02]);
-            println!("Token Entropy Proxy: {:.6}", entropy);
+            println!("Token Entropy (Shannon): {:.6} nats", entropy);
 
             let proj =
                 MojoSimdBridge::token_projection([1.0, 2.0, 3.0, 4.0], [0.5, 0.5, 0.5, 0.5], 1.0);

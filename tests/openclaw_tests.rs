@@ -449,7 +449,8 @@ async fn test_mojo_simd_bridge_operations() {
     assert!((proj - 7.0).abs() < 1e-4);
 
     let entropy = MojoSimdBridge::token_entropy([0.5, 0.5, 0.0, 0.0]);
-    assert!(entropy < 0.0);
+    assert!((entropy - std::f32::consts::LN_2).abs() < 1e-4);
+    assert!(entropy > 0.0);
 }
 
 #[tokio::test]

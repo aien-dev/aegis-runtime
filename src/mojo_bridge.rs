@@ -215,7 +215,7 @@ impl MojoSimdBridge {
                 continue;
             }
             if p > 0.00001 {
-                sum += p * (p - 1.0);
+                sum += -p * p.ln();
             }
         }
         sum
@@ -442,10 +442,41 @@ mod tests {
         assert!((proj - expected).abs() < 1e-4);
 
         let entropy = MojoSimdBridge::token_entropy_fallback([0.5, 0.5, 0.0, 0.0]);
-        assert!(entropy < 0.0);
+        assert!((entropy - std::f32::consts::LN_2).abs() < 1e-4);
+        assert!(entropy > 0.0);
+
+        let zero_entropy = MojoSimdBridge::token_entropy_fallback([1.0, 0.0, 0.0, 0.0]);
+        assert!((zero_entropy - 0.0).abs() < 1e-4);
+
+        let uniform4_entropy = MojoSimdBridge::token_entropy_fallback([0.25, 0.25, 0.25, 0.25]);
+        assert!((uniform4_entropy - (2.0 * std::f32::consts::LN_2)).abs() < 1e-4);
 
         // Mismatched slice length
         assert_eq!(MojoSimdBridge::cosine_similarity_fallback(&[1.0, 2.0], &[1.0]), 0.0);
         assert_eq!(MojoSimdBridge::cosine_similarity_fallback(&[], &[]), 0.0);
+    }
+
+    #[test]
+    fn test_python_analytical_parity() {
+        let fixture_path = "tests/fixtures/simd_math_vectors.json";
+        if let Ok(data) = std::fs::read_to_string(fixture_path) {
+            let v: serde_json::Value = serde_json::from_str(&data).expect("Valid JSON fixture");
+            if let Some(entropy_cases) = v.get("entropy").and_then(|e| e.as_array()) {
+                for case in entropy_cases {
+                    let probs: Vec<f32> = case["probs"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|p| p.as_f64().unwrap() as f32)
+                        .collect();
+                    let expected = case["expected"].as_f64().unwrap() as f32;
+                    let p_arr = [probs[0], probs[1], probs[2], probs[3]];
+                    let fb = MojoSimdBridge::token_entropy_fallback(p_arr);
+                    assert!((fb - expected).abs() < 1e-4, "Entropy fallback parity failure for {:?}", case["name"]);
+                    let live = MojoSimdBridge::token_entropy(p_arr);
+                    assert!((live - expected).abs() < 1e-4, "Entropy live parity failure for {:?}", case["name"]);
+                }
+            }
+        }
     }
 }
