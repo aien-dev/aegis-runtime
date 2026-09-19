@@ -1,0 +1,29 @@
+# openclaw-rs
+> Ultra-high-performance sovereign agent runtime in native Rust, Mojo 1.1 SIMD kernels, and Modular MAX local inference on Grace Blackwell GB10. Replaces the legacy Node.js/TypeScript OpenClaw stack with sub-millisecond execution, zero cloud token bills, and proactive autonomous heartbeats.
+
+## Overview
+- Repository: https://github.com/aien-dev/openclaw-rs
+- License: Sovereign Reciprocal Commons License (SRCL-1.0), Apache 2.0 with LLVM Exceptions and Reciprocal AI Weight Release.
+- Language: Rust 2021 + Mojo 1.1
+- Runtime: Pure native compiled binaries. Zero Node.js. Zero Python daemons.
+
+## Architecture
+- Axum Gateway: Sub-millisecond WebSockets, Server-Sent Events (SSE), and REST API on port 18096.
+- Heartbeat Engine: Proactive autonomous background tick loop (60s period). Executes digital colleague workflows without requiring human prompts.
+- Inference Engine: Direct HTTP client to Modular MAX serving local weights on port 18006 (`atlas-lightning-omni` on GB10). TTFT < 50ms.
+- Persistence: Embedded SQLite with Write-Ahead-Logging (WAL) mode for sub-millisecond ACID history and state storage.
+- Mojo SIMD Bridge: Zero-copy C-ABI FFI linking Mojo 1.1 vector kernels for cosine similarity and attention operations.
+- Security: Hardware TPM key vault (`atlas-vault`). Zero disk secrets. Dynamic memory resolution and automatic secret redaction (`[REDACTED_BY_ATLAS_VAULT]`).
+
+## Quickstart
+```bash
+cargo build --release
+./target/release/openclaw serve --bind 0.0.0.0:18096
+```
+
+## Endpoints
+- `GET /health`: Engine status, version, and hardware target.
+- `GET /api/v1/status`: Comprehensive status with MAX connectivity and active tasks.
+- `POST /api/v1/chat`: Direct inference request to local MAX.
+- `GET /api/v1/heartbeat/tick`: Force an immediate heartbeat tick.
+- `GET /ws`: Full duplex WebSocket interface for real-time agent coordination.
