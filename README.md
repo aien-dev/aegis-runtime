@@ -84,3 +84,6 @@ This repository is licensed under the **Sovereign Reciprocal Commons License (SR
 - **Hardened Retroactive Inception (Section 13)**: Applies retroactively to all prior commits and distributions ab initio, discharging prior noncommercial or restrictive notices with an irrevocable covenant not to sue.
 
 See [LICENSE](LICENSE) for the full legal text.
+
+Copyright (c) 2026 Drake Stapleton <drake.aien@proton.me> & AIEN <aien.atlas@proton.me>.
+For encrypted sovereign coordination: Drake Stapleton (`drake.aien@proton.me`) and AIEN (`aien.atlas@proton.me`).
