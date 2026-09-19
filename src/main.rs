@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Initializing OpenClaw engine on Grace Blackwell GB10...");
             let db = Arc::new(Database::open(Path::new(&db_path))?);
             let inference = Arc::new(InferenceEngine::new(Some(max_url), None));
-            let heartbeat = Arc::new(HeartbeatEngine::new(heartbeat_secs, db.clone()));
+            let heartbeat = Arc::new(HeartbeatEngine::with_inference(heartbeat_secs, db.clone(), inference.clone()));
             let skills = Arc::new(SkillRegistry::new());
 
             heartbeat.clone().start_loop().await;
