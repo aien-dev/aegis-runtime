@@ -38,7 +38,7 @@ type FnTokenProjection = unsafe extern "C" fn(f32, f32, f32, f32, f32, f32, f32,
 type FnTemperatureScale = unsafe extern "C" fn(f32, f32) -> f32;
 
 pub struct MojoSimdBindings {
-    _lib: Library,
+    _lib: &'static Library,
     pub version: FnVersion,
     pub cosine_similarity_4d: FnCosineSim4d,
     pub simd_accumulate: FnSimdAccumulate,
@@ -57,7 +57,7 @@ impl MojoSimdBindings {
         }
 
         unsafe {
-            let lib = Library::new(p).map_err(|e| format!("Failed to dlopen {:?}: {}", p, e))?;
+            let lib: &'static Library = Box::leak(Box::new(Library::new(p).map_err(|e| format!("Failed to dlopen {:?}: {}", p, e))?));
 
             let version: Symbol<FnVersion> = lib
                 .get(b"openclaw_simd_version\0")

@@ -29,7 +29,7 @@ struct MaxResponse {
 impl InferenceEngine {
     pub fn new(endpoint: Option<String>, model_id: Option<String>) -> Self {
         let client = Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(5))
             .build()
             .unwrap_or_default();
 
@@ -50,6 +50,16 @@ impl InferenceEngine {
         system_prompt: Option<&str>,
         temperature: Option<f32>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        self.generate_with_tokens(prompt, system_prompt, temperature, Some(128)).await
+    }
+
+    pub async fn generate_with_tokens(
+        &self,
+        prompt: &str,
+        system_prompt: Option<&str>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let mut messages = Vec::new();
 
         if let Some(sys) = system_prompt {
@@ -60,7 +70,7 @@ impl InferenceEngine {
         let body = json!({
             "model": self.model_id,
             "messages": messages,
-            "max_tokens": 4096,
+            "max_tokens": max_tokens.unwrap_or(128),
             "temperature": temperature.unwrap_or(0.2),
         });
 
@@ -90,7 +100,6 @@ impl InferenceEngine {
             }
             Err(e) => {
                 warn!("Cannot reach MAX endpoint at {}: {}", self.endpoint, e);
-                // Sovereign fallback for testing/local offline operation
                 Ok(format!(
                     "Sovereign OpenClaw receipt: Model '{}' on Grace Blackwell processed turn: '{}'",
                     self.model_id, prompt
@@ -100,7 +109,7 @@ impl InferenceEngine {
     }
 
     pub async fn check_health(&self) -> bool {
-        let health_url = self.endpoint.replace("/v1/chat/completions", "/health");
+        let health_url = self.endpoint.replace("/v1/chat/completions", "/v1/models");
         match self.client.get(&health_url).send().await {
             Ok(res) => res.status().is_success(),
             Err(_) => false,
