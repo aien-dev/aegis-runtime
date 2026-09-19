@@ -181,6 +181,38 @@ pub async fn openai_completions_handler(
     State(state): State<GatewayState>,
     Json(payload): Json<OpenAiChatRequest>,
 ) -> Response {
+    if payload.messages.is_empty() {
+        let err_body = json!({
+            "error": {
+                "message": "Missing required parameter: 'messages' must contain at least one message.",
+                "type": "invalid_request_error",
+                "param": "messages",
+                "code": "missing_required_parameter"
+            }
+        });
+        return (StatusCode::BAD_REQUEST, Json(err_body)).into_response();
+    }
+
+    if let Some(ref req_model) = payload.model {
+        let supported_model = state.inference.model_id();
+        if req_model != &supported_model
+            && req_model != "atlas-lightning-omni"
+            && req_model != "modular-max"
+            && req_model != "openclaw-default"
+            && req_model != "default"
+        {
+            let err_body = json!({
+                "error": {
+                    "message": format!("The model '{}' does not exist or is not supported.", req_model),
+                    "type": "invalid_request_error",
+                    "param": "model",
+                    "code": "model_not_found"
+                }
+            });
+            return (StatusCode::NOT_FOUND, Json(err_body)).into_response();
+        }
+    }
+
     let messages_json: Vec<serde_json::Value> = payload
         .messages
         .iter()
@@ -631,4 +663,30 @@ pub async fn start_gateway(
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_gateway_health_handler_unit() {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        let inference = Arc::new(InferenceEngine::new(None, None));
+        let heartbeat = Arc::new(HeartbeatEngine::new(60, db.clone()));
+        let skills = Arc::new(SkillRegistry::new());
+        let agent = Arc::new(AgentEngine::new(inference.clone(), skills.clone(), Some(db.clone())));
+
+        let state = GatewayState {
+            start_time: Instant::now(),
+            db,
+            inference,
+            heartbeat,
+            skills,
+            agent,
+        };
+
+        let res = health_handler(State(state)).await.into_response();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
 }
