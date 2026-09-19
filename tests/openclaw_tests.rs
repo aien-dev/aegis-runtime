@@ -723,13 +723,29 @@ async fn test_gateway_websocket_lifecycle_ping_pong_and_close() {
 async fn test_gateway_submillisecond_health_latency_benchmark() {
     let state = create_test_state();
 
+    let app = create_router(state);
+
+    // Warm-up
+    for _ in 0..5 {
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+    }
+
     let iterations = 100;
     let mut total_duration_micros: u128 = 0;
 
     for _ in 0..iterations {
-        let app = create_router(state.clone());
         let start = Instant::now();
         let response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/health")
