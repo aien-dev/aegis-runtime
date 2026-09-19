@@ -26,7 +26,7 @@ use tracing::info;
 use crate::heartbeat::HeartbeatEngine;
 use crate::inference::InferenceEngine;
 use crate::mojo_bridge::MojoSimdBridge;
-use crate::persistence::{Database, TaskRecord};
+use crate::persistence::Database;
 use crate::skills::SkillRegistry;
 
 #[derive(Clone)]

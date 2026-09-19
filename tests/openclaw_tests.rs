@@ -9,23 +9,29 @@ use openclaw::{
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;
-use tower::ServiceExt;
+use tower::util::ServiceExt;
 
-#[tokio::test]
-async fn test_gateway_health_endpoint() {
+fn create_test_state() -> GatewayState {
     let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(InferenceEngine::new(None, None));
+    let inference = Arc::new(InferenceEngine::new(
+        Some("http://127.0.0.1:9999/v1/chat/completions".to_string()),
+        None,
+    ));
     let heartbeat = Arc::new(HeartbeatEngine::new(60, db.clone()));
     let skills = Arc::new(SkillRegistry::new());
 
-    let state = GatewayState {
+    GatewayState {
         start_time: Instant::now(),
         db,
         inference,
         heartbeat,
         skills,
-    };
+    }
+}
 
+#[tokio::test]
+async fn test_gateway_health_endpoint() {
+    let state = create_test_state();
     let app = create_router(state);
 
     let response = app
@@ -51,19 +57,7 @@ async fn test_gateway_health_endpoint() {
 
 #[tokio::test]
 async fn test_gateway_openai_completions_endpoint() {
-    let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(InferenceEngine::new(None, None));
-    let heartbeat = Arc::new(HeartbeatEngine::new(60, db.clone()));
-    let skills = Arc::new(SkillRegistry::new());
-
-    let state = GatewayState {
-        start_time: Instant::now(),
-        db,
-        inference,
-        heartbeat,
-        skills,
-    };
-
+    let state = create_test_state();
     let app = create_router(state);
 
     let req_payload = serde_json::json!({
@@ -97,19 +91,7 @@ async fn test_gateway_openai_completions_endpoint() {
 
 #[tokio::test]
 async fn test_gateway_shell_execution() {
-    let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(InferenceEngine::new(None, None));
-    let heartbeat = Arc::new(HeartbeatEngine::new(60, db.clone()));
-    let skills = Arc::new(SkillRegistry::new());
-
-    let state = GatewayState {
-        start_time: Instant::now(),
-        db,
-        inference,
-        heartbeat,
-        skills,
-    };
-
+    let state = create_test_state();
     let app = create_router(state);
 
     let req_payload = serde_json::json!({
@@ -142,19 +124,7 @@ async fn test_gateway_shell_execution() {
 
 #[tokio::test]
 async fn test_gateway_task_creation_and_listing() {
-    let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(InferenceEngine::new(None, None));
-    let heartbeat = Arc::new(HeartbeatEngine::new(60, db.clone()));
-    let skills = Arc::new(SkillRegistry::new());
-
-    let state = GatewayState {
-        start_time: Instant::now(),
-        db,
-        inference,
-        heartbeat,
-        skills,
-    };
-
+    let state = create_test_state();
     let app = create_router(state.clone());
 
     let req_payload = serde_json::json!({
@@ -206,7 +176,6 @@ async fn test_mojo_simd_bridge_operations() {
     let tokens = [2.0f32, 4.0, 6.0, 8.0];
     let weights = [0.25f32, 0.25, 0.25, 0.25];
     let proj = MojoSimdBridge::token_projection(tokens, weights, 2.0);
-    // 2*0.25 + 4*0.25 + 6*0.25 + 8*0.25 + 2.0 = 5.0 + 2.0 = 7.0
     assert!((proj - 7.0).abs() < 1e-4);
 
     let entropy = MojoSimdBridge::token_entropy([0.5, 0.5, 0.0, 0.0]);
