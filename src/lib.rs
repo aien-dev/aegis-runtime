@@ -6,8 +6,9 @@ pub mod persistence;
 pub mod skills;
 pub mod vault;
 
-pub use gateway::{start_gateway, GatewayState};
-pub use heartbeat::HeartbeatEngine;
+pub use gateway::{create_router, start_gateway, GatewayState, HealthResponse};
+pub use heartbeat::{HeartbeatEngine, PulseReceipt};
 pub use inference::InferenceEngine;
-pub use persistence::Database;
+pub use mojo_bridge::MojoSimdBridge;
+pub use persistence::{CrumbRecord, Database, TaskRecord};
 pub use skills::SkillRegistry;

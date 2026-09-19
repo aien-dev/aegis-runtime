@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use openclaw::{
-    start_gateway, Database, GatewayState, HeartbeatEngine, InferenceEngine, SkillRegistry,
+    start_gateway, Database, GatewayState, HeartbeatEngine, InferenceEngine, MojoSimdBridge,
+    SkillRegistry,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -18,7 +19,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start the Axum WebSocket and HTTP gateway with autonomous heartbeat
+    /// Start the Axum WebSocket, SSE, and HTTP gateway with autonomous heartbeat
     Serve {
         #[arg(short, long, default_value = "18096")]
         port: u16,
@@ -26,6 +27,8 @@ enum Commands {
         max_url: String,
         #[arg(long, default_value = "openclaw.sqlite")]
         db_path: String,
+        #[arg(long, default_value = "60")]
+        heartbeat_secs: u64,
     },
     /// Run a single heartbeat tick immediately
     Tick {
@@ -37,6 +40,11 @@ enum Commands {
         prompt: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
         max_url: String,
+    },
+    /// Evaluate Mojo SIMD vector operations
+    Simd {
+        #[arg(long, default_value = "10")]
+        steps: i32,
     },
     /// Display runtime status and system health
     Status {
@@ -60,15 +68,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         port: 18096,
         max_url: "http://127.0.0.1:18006/v1/chat/completions".to_string(),
         db_path: "openclaw.sqlite".to_string(),
+        heartbeat_secs: 60,
     }) {
-        Commands::Serve { port, max_url, db_path } => {
+        Commands::Serve {
+            port,
+            max_url,
+            db_path,
+            heartbeat_secs,
+        } => {
             info!("Initializing OpenClaw engine on Grace Blackwell GB10...");
             let db = Arc::new(Database::open(Path::new(&db_path))?);
             let inference = Arc::new(InferenceEngine::new(Some(max_url), None));
-            let heartbeat = Arc::new(HeartbeatEngine::new(60, db.clone()));
+            let heartbeat = Arc::new(HeartbeatEngine::new(heartbeat_secs, db.clone()));
             let skills = Arc::new(SkillRegistry::new());
 
-            // Spawn background proactive heartbeat loop
             heartbeat.clone().start_loop().await;
 
             let state = GatewayState {
@@ -97,6 +110,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(err) => eprintln!("Inference error: {}", err),
             }
         }
+        Commands::Simd { steps } => {
+            println!("=== Mojo SIMD Vector Evaluation ===");
+            let version = MojoSimdBridge::version();
+            let is_accel = MojoSimdBridge::is_mojo_accelerated();
+            println!("Mojo SIMD Status: {}", if is_accel { "ACCELERATED (C-ABI .so)" } else { "NATIVE FALLBACK" });
+            println!("Kernel Version: {}", version);
+
+            let v1 = [1.0f32, 0.0, 0.0, 0.0];
+            let v2 = [0.9f32, 0.1, 0.0, 0.0];
+            let sim = MojoSimdBridge::cosine_similarity_4d(v1, v2);
+            println!("Cosine Similarity ([1,0,0,0] vs [0.9,0.1,0,0]): {:.6}", sim);
+
+            let acc = MojoSimdBridge::simd_accumulate(1.0, 1.05, steps);
+            println!("SIMD Accumulate (base=1.0, scale=1.05, steps={}): {:.6}", steps, acc);
+
+            let entropy = MojoSimdBridge::token_entropy([0.7, 0.2, 0.08, 0.02]);
+            println!("Token Entropy Proxy: {:.6}", entropy);
+
+            let proj = MojoSimdBridge::token_projection([1.0, 2.0, 3.0, 4.0], [0.5, 0.5, 0.5, 0.5], 1.0);
+            println!("Token Projection: {:.6}", proj);
+        }
         Commands::Status { max_url, db_path } => {
             println!("=== OpenClaw Sovereign Runtime Status ===");
             println!("Architecture: Pure native Rust + Mojo 1.1 + Modular MAX");
@@ -106,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let inference = InferenceEngine::new(Some(max_url), None);
             let healthy = inference.check_health().await;
             println!("MAX Engine Status: {}", if healthy { "ONLINE (GB10 Local)" } else { "OFFLINE (Fallback Active)" });
+            println!("Mojo SIMD Acceleration: {}", if MojoSimdBridge::is_mojo_accelerated() { "ACTIVE" } else { "NATIVE_FALLBACK" });
         }
     }
 
