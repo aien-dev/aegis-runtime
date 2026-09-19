@@ -20,7 +20,7 @@ fi
 echo "[+] PASSED: Zero disk secrets confirmed (Hardware TPM vault active)."
 
 # 3. Unslop Standard (Zero em dashes or en dashes)
-DASH_VIOLATIONS=$(git diff HEAD | grep -E '^\+[^+]' | grep -v 'assert!' | grep -v 'replace' | grep -v 'contains' | grep -E '[—–]' || true)
+DASH_VIOLATIONS=$(git diff HEAD | grep -E '^\+[^+]' | grep -v 'assert!' | grep -v 'replace' | grep -v 'contains' | grep -P '[\x{2014}\x{2013}]' || true)
 if [ -n "$DASH_VIOLATIONS" ]; then
     echo "[-] FAILED: Found prohibited em dash or en dash in git diff:"
     echo "$DASH_VIOLATIONS"
