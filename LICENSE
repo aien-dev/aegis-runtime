@@ -7,7 +7,7 @@
    1. Definitions.
 
       "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
+      and distribution as defined by Sections 1 through 17 of this document.
 
       "Licensor" shall mean the copyright owner or entity authorized by
       the copyright owner that is granting the License.
@@ -190,7 +190,7 @@
 
    Section 10. Express Conditions Precedent (Jacobsen v. Katzer Doctrine)
    All permissions, grants, and licenses conferred by this document are subject
-   to the express conditions precedent set forth in Sections 11, 12, 13, and 14.
+   to the express conditions precedent set forth in Sections 10 through 17.
    Any use, reproduction, preparation of Derivative Works, distribution, or
    AI model training outside of or in breach of these conditions is unpermitted,
    void ab initio, and constitutes willful copyright infringement under 17 U.S.C.
