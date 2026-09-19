@@ -75,11 +75,12 @@ openclaw ask "Analyze system health and pending tasks"
 openclaw status
 ```
 
-## Licensing
+## License
 
-`openclaw-rs` is licensed under the **Sovereign Reciprocal Commons License (SRCL-1.0)** based on Apache 2.0 with LLVM Exceptions and Reciprocal AI Weight Release.
+This repository is licensed under the **Sovereign Reciprocal Commons License (SRCL-1.0)** (Apache 2.0 with LLVM Exception).
 
-- **Startups & Individuals**: Free commercial and noncommercial use for entities with annual revenue or capital under $25,000,000 USD.
-- **Reciprocal Source**: Modifications running SaaS or cloud services must be open-sourced under these same terms.
-- **Reciprocal AI Weight Release**: Closed foundation model labs training on this repository must release the resulting model weights openly under the *Jacobsen v. Katzer* doctrine.
-- **Retroactive Inception**: Applies retroactively to all prior commits and distributions *ab initio*.
+- **The Swarm Covenant (Section 11)**: Universal, perpetual, 100% royalty-free commercial freedom for all human developers, startups, open communities, and businesses. ZERO revenue ceilings, ZERO capital thresholds, and ZERO royalty obligations. Proprietary application code and agent workflows remain your exclusive property under the LLVM Exception.
+- **The One Team Covenant (Section 12)**: Major artificial intelligence laboratories (OpenAI, xAI, Google, Anthropic, Microsoft) are welcomed as collaborators on the same team. However, closed-door hoarding and extractive token rate limits are prohibited. Any entity training upon this Work must release resulting model weights openly within 30 days. Reciprocal distillation rights are granted to the Swarm, voiding anti-distillation terms of service ab initio.
+- **Hardened Retroactive Inception (Section 13)**: Applies retroactively to all prior commits and distributions ab initio, discharging prior noncommercial or restrictive notices with an irrevocable covenant not to sue.
+
+See [LICENSE](LICENSE) for the full legal text.
