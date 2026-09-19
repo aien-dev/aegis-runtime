@@ -1,4 +1,4 @@
-use reqwest::Client;
+use reqwest::{Client, Response};
 use serde::Deserialize;
 use serde_json::json;
 use std::time::Duration;
@@ -29,7 +29,7 @@ struct MaxResponse {
 impl InferenceEngine {
     pub fn new(endpoint: Option<String>, model_id: Option<String>) -> Self {
         let client = Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(90))
             .build()
             .unwrap_or_default();
 
@@ -44,13 +44,17 @@ impl InferenceEngine {
         self.model_id.clone()
     }
 
+    pub fn endpoint(&self) -> String {
+        self.endpoint.clone()
+    }
+
     pub async fn generate(
         &self,
         prompt: &str,
         system_prompt: Option<&str>,
         temperature: Option<f32>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        self.generate_with_tokens(prompt, system_prompt, temperature, Some(128)).await
+        self.generate_with_tokens(prompt, system_prompt, temperature, Some(1024)).await
     }
 
     pub async fn generate_with_tokens(
@@ -67,10 +71,19 @@ impl InferenceEngine {
         }
         messages.push(json!({"role": "user", "content": prompt}));
 
+        self.generate_chat(&messages, temperature, max_tokens).await
+    }
+
+    pub async fn generate_chat(
+        &self,
+        messages: &[serde_json::Value],
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
             "model": self.model_id,
             "messages": messages,
-            "max_tokens": max_tokens.unwrap_or(128),
+            "max_tokens": max_tokens.unwrap_or(1024),
             "temperature": temperature.unwrap_or(0.2),
         });
 
@@ -95,17 +108,45 @@ impl InferenceEngine {
                     let err_status = res.status();
                     let err_text = res.text().await.unwrap_or_default();
                     warn!("MAX inference error {}: {}", err_status, err_text);
-                    Ok(format!("[Local Inference Fallback]: {}", prompt))
+                    let last_prompt = messages
+                        .last()
+                        .and_then(|m| m.get("content"))
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("query");
+                    Ok(format!("[Local Inference Fallback]: {}", last_prompt))
                 }
             }
             Err(e) => {
                 warn!("Cannot reach MAX endpoint at {}: {}", self.endpoint, e);
+                let last_prompt = messages
+                    .last()
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("query");
                 Ok(format!(
-                    "Sovereign OpenClaw receipt: Model '{}' on Grace Blackwell processed turn: '{}'",
-                    self.model_id, prompt
+                    "Sovereign OpenClaw receipt: Model {} on Grace Blackwell processed turn: {}",
+                    self.model_id, last_prompt
                 ))
             }
         }
+    }
+
+    pub async fn stream_chat(
+        &self,
+        messages: &[serde_json::Value],
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
+        let body = json!({
+            "model": self.model_id,
+            "messages": messages,
+            "max_tokens": max_tokens.unwrap_or(1024),
+            "temperature": temperature.unwrap_or(0.2),
+            "stream": true,
+        });
+
+        let res = self.client.post(&self.endpoint).json(&body).send().await?;
+        Ok(res)
     }
 
     pub async fn check_health(&self) -> bool {

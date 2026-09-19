@@ -1,5 +1,5 @@
 # openclaw-rs
-> Ultra-high-performance sovereign agent runtime in native Rust, Mojo 1.1 SIMD kernels, and Modular MAX local inference on Grace Blackwell GB10. Replaces the legacy Node.js/TypeScript OpenClaw stack with sub-millisecond execution, zero cloud token bills, and proactive autonomous heartbeats.
+> Ultra-high-performance sovereign agent runtime in native Rust, Mojo 1.1 SIMD kernels, and Modular MAX local inference on Grace Blackwell GB10. Replaces legacy Node.js/TypeScript runtimes with sub-millisecond execution, zero cloud token bills, and proactive autonomous heartbeats.
 
 ## Overview
 - Repository: https://github.com/aien-dev/openclaw-rs
@@ -10,20 +10,26 @@
 ## Architecture
 - Axum Gateway: Sub-millisecond WebSockets, Server-Sent Events (SSE), and REST API on port 18096.
 - Heartbeat Engine: Proactive autonomous background tick loop (60s period). Executes digital colleague workflows without requiring human prompts.
-- Inference Engine: Direct HTTP client to Modular MAX serving local weights on port 18006 (`atlas-lightning-omni` on GB10). TTFT < 50ms.
+- Inference Engine: Direct HTTP client to Modular MAX serving local weights on port 18006 (atlas-lightning-omni on GB10). TTFT < 50ms with SSE streaming.
 - Persistence: Embedded SQLite with Write-Ahead-Logging (WAL) mode for sub-millisecond ACID history and state storage.
 - Mojo SIMD Bridge: Zero-copy C-ABI FFI linking Mojo 1.1 vector kernels for cosine similarity and attention operations.
-- Security: Hardware TPM key vault (`atlas-vault`). Zero disk secrets. Dynamic memory resolution and automatic secret redaction (`[REDACTED_BY_ATLAS_VAULT]`).
+- Security: Hardware TPM key vault (atlas-vault). Zero disk secrets. Dynamic memory resolution and automatic secret redaction ([REDACTED_BY_ATLAS_VAULT]).
 
 ## Quickstart
 ```bash
 cargo build --release
-./target/release/openclaw serve --bind 0.0.0.0:18096
+./target/release/openclaw serve --port 18096
 ```
 
 ## Endpoints
-- `GET /health`: Engine status, version, and hardware target.
-- `GET /api/v1/status`: Comprehensive status with MAX connectivity and active tasks.
+- `GET /health` & `GET /api/v1/health`: Engine health, model ID, uptime, and Mojo SIMD status.
+- `POST /v1/chat/completions`: OpenAI-compatible completions with multi-turn chat and SSE token streaming.
+- `GET /v1/models`: OpenAI-compatible models listing.
+- `GET /api/v1/skills`: List registered skills.
+- `POST /api/v1/skills/execute`: Execute a registered skill.
 - `POST /api/v1/chat`: Direct inference request to local MAX.
-- `GET /api/v1/heartbeat/tick`: Force an immediate heartbeat tick.
-- `GET /ws`: Full duplex WebSocket interface for real-time agent coordination.
+- `POST /api/v1/heartbeat/tick`: Force an immediate heartbeat tick.
+- `POST /api/v1/tasks` & `GET /api/v1/tasks`: Task queue creation and listing.
+- `POST /api/v1/shell`: Local shell execution.
+- `GET /events` & `GET /api/v1/events`: SSE event stream for autonomous heartbeats.
+- `GET /ws` & `GET /api/v1/ws`: Full duplex WebSocket with real-time heartbeat pulse pushes.

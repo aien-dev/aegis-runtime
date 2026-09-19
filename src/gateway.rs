@@ -1,12 +1,13 @@
 use axum::{
+    body::Body,
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Json, State,
     },
-    http::StatusCode,
+    http::{header, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
-        IntoResponse,
+        IntoResponse, Response,
     },
     routing::{get, post},
     Router,
@@ -27,7 +28,7 @@ use crate::heartbeat::HeartbeatEngine;
 use crate::inference::InferenceEngine;
 use crate::mojo_bridge::MojoSimdBridge;
 use crate::persistence::Database;
-use crate::skills::SkillRegistry;
+use crate::skills::{SkillExecutionRequest, SkillRegistry};
 
 #[derive(Clone)]
 pub struct GatewayState {
@@ -114,8 +115,8 @@ pub async fn chat_handler(
     }))
 }
 
-// OpenAI-compatible Chat Completions API
-#[derive(Deserialize)]
+// OpenAI-compatible Chat Completions API with streaming and multi-turn support
+#[derive(Deserialize, Serialize, Clone)]
 pub struct OpenAiMessage {
     pub role: String,
     pub content: String,
@@ -126,60 +127,104 @@ pub struct OpenAiChatRequest {
     pub model: Option<String>,
     pub messages: Vec<OpenAiMessage>,
     pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub stream: Option<bool>,
 }
 
 pub async fn openai_completions_handler(
     State(state): State<GatewayState>,
     Json(payload): Json<OpenAiChatRequest>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let start = Instant::now();
-    let mut system_prompt = None;
-    let mut last_user_prompt = String::new();
+) -> Response {
+    let messages_json: Vec<serde_json::Value> = payload
+        .messages
+        .iter()
+        .map(|m| json!({"role": m.role, "content": m.content}))
+        .collect();
 
-    for m in &payload.messages {
-        if m.role == "system" {
-            system_prompt = Some(m.content.clone());
-        } else if m.role == "user" {
-            last_user_prompt = m.content.clone();
+    let last_user_prompt = payload
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.as_str())
+        .unwrap_or("hello")
+        .to_string();
+
+    if payload.stream == Some(true) {
+        match state
+            .inference
+            .stream_chat(&messages_json, payload.temperature, payload.max_tokens)
+            .await
+        {
+            Ok(res) => {
+                let stream = res.bytes_stream();
+                let body = Body::from_stream(stream);
+                Response::builder()
+                    .header(header::CONTENT_TYPE, "text/event-stream")
+                    .header(header::CACHE_CONTROL, "no-cache")
+                    .header(header::CONNECTION, "keep-alive")
+                    .body(body)
+                    .unwrap()
+            }
+            Err(_e) => {
+                let fallback_chunk = json!({
+                    "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                    "object": "chat.completion.chunk",
+                    "choices": [{
+                        "delta": {"content": format!("[Fallback]: {}", last_user_prompt)},
+                        "index": 0,
+                        "finish_reason": "stop"
+                    }]
+                });
+                let sse_body = format!("data: {}\n\ndata: [DONE]\n\n", fallback_chunk);
+                Response::builder()
+                    .header(header::CONTENT_TYPE, "text/event-stream")
+                    .body(Body::from(sse_body))
+                    .unwrap()
+            }
+        }
+    } else {
+        let start = Instant::now();
+        let model = state.inference.model_id();
+        let result = state
+            .inference
+            .generate_chat(&messages_json, payload.temperature, payload.max_tokens)
+            .await;
+        let duration = start.elapsed().as_millis();
+
+        match result {
+            Ok(response) => {
+                let _ = state
+                    .db
+                    .record_turn("user", &last_user_prompt, &response, duration as u64);
+
+                let p_tokens = last_user_prompt.split_whitespace().count();
+                let c_tokens = response.split_whitespace().count();
+
+                let resp_body = json!({
+                    "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                    "object": "chat.completion",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": model,
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": response,
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": p_tokens,
+                        "completion_tokens": c_tokens,
+                        "total_tokens": p_tokens + c_tokens,
+                    }
+                });
+                Json(resp_body).into_response()
+            }
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
         }
     }
-
-    let response = state
-        .inference
-        .generate(
-            &last_user_prompt,
-            system_prompt.as_deref(),
-            payload.temperature,
-        )
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    let duration = start.elapsed().as_millis();
-    let model = state.inference.model_id();
-
-    let _ = state
-        .db
-        .record_turn("user", &last_user_prompt, &response, duration as u64);
-
-    Ok(Json(json!({
-        "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
-        "object": "chat.completion",
-        "created": chrono::Utc::now().timestamp(),
-        "model": model,
-        "choices": [{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": response,
-            },
-            "finish_reason": "stop"
-        }],
-        "usage": {
-            "prompt_tokens": last_user_prompt.split_whitespace().count(),
-            "completion_tokens": response.split_whitespace().count(),
-            "total_tokens": last_user_prompt.split_whitespace().count() + response.split_whitespace().count(),
-        }
-    })))
 }
 
 pub async fn openai_models_handler(State(state): State<GatewayState>) -> impl IntoResponse {
@@ -313,6 +358,20 @@ pub async fn trigger_heartbeat_handler(State(state): State<GatewayState>) -> imp
     Json(receipt)
 }
 
+// Skills endpoints
+pub async fn list_skills_handler(State(state): State<GatewayState>) -> impl IntoResponse {
+    let list = state.skills.list_skills();
+    Json(list)
+}
+
+pub async fn execute_skill_handler(
+    State(state): State<GatewayState>,
+    Json(req): Json<SkillExecutionRequest>,
+) -> impl IntoResponse {
+    let res = state.skills.execute(&req);
+    Json(res)
+}
+
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<GatewayState>,
@@ -336,72 +395,109 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
         return;
     }
 
-    while let Some(Ok(msg)) = socket.next().await {
-        if let Message::Text(text) = msg {
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
-                let msg_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("chat");
-                match msg_type {
-                    "ping" => {
-                        let pong = json!({"type": "pong", "timestamp": chrono::Utc::now().to_rfc3339()});
-                        let _ = socket.send(Message::Text(pong.to_string())).await;
-                    }
-                    "heartbeat" => {
-                        let receipt = state.heartbeat.pulse_once().await;
-                        let out = json!({"type": "heartbeat_receipt", "receipt": receipt});
-                        let _ = socket.send(Message::Text(out.to_string())).await;
-                    }
-                    "shell" => {
-                        let cmd_str = parsed.get("command").and_then(|v| v.as_str()).unwrap_or("echo shell ready");
-                        let res = Command::new("sh").arg("-c").arg(cmd_str).output().await;
-                        let out = match res {
-                            Ok(o) => json!({
-                                "type": "shell_output",
-                                "stdout": String::from_utf8_lossy(&o.stdout),
-                                "stderr": String::from_utf8_lossy(&o.stderr),
-                                "exit_code": o.status.code().unwrap_or(-1),
-                            }),
-                            Err(e) => json!({
-                                "type": "shell_error",
-                                "error": e.to_string(),
-                            }),
-                        };
-                        let _ = socket.send(Message::Text(out.to_string())).await;
-                    }
-                    "simd_eval" => {
-                        let sim = MojoSimdBridge::cosine_similarity(&[1.0, 0.0, 0.0, 0.0], &[1.0, 0.0, 0.0, 0.0]);
-                        let out = json!({
-                            "type": "simd_result",
-                            "cosine_similarity": sim,
-                            "accelerated": MojoSimdBridge::is_mojo_accelerated(),
-                            "version": MojoSimdBridge::version(),
-                        });
-                        let _ = socket.send(Message::Text(out.to_string())).await;
-                    }
-                    _ => {
-                        let prompt = parsed.get("content").and_then(|v| v.as_str()).unwrap_or(&text);
-                        let start = Instant::now();
-                        let result = state.inference.generate(prompt, None, None).await;
-                        let duration = start.elapsed().as_millis();
+    let mut pulse_rx = state.heartbeat.subscribe();
 
-                        match result {
-                            Ok(reply) => {
-                                let out = json!({
-                                    "type": "response",
-                                    "content": reply,
-                                    "duration_ms": duration,
-                                    "timestamp": chrono::Utc::now().to_rfc3339(),
-                                });
-                                if socket.send(Message::Text(out.to_string())).await.is_err() {
-                                    break;
-                                }
+    loop {
+        tokio::select! {
+            pulse = pulse_rx.recv() => {
+                if let Ok(receipt) = pulse {
+                    let out = json!({
+                        "type": "heartbeat_pulse",
+                        "receipt": receipt,
+                    });
+                    if socket.send(Message::Text(out.to_string())).await.is_err() {
+                        break;
+                    }
+                }
+            }
+            msg = socket.next() => {
+                let Some(Ok(msg)) = msg else {
+                    break;
+                };
+                if let Message::Text(text) = msg {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                        let msg_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("chat");
+                        match msg_type {
+                            "ping" => {
+                                let pong = json!({"type": "pong", "timestamp": chrono::Utc::now().to_rfc3339()});
+                                let _ = socket.send(Message::Text(pong.to_string())).await;
                             }
-                            Err(err) => {
-                                let err_out = json!({
-                                    "type": "error",
-                                    "message": err.to_string(),
+                            "heartbeat" => {
+                                let receipt = state.heartbeat.pulse_once().await;
+                                let out = json!({"type": "heartbeat_receipt", "receipt": receipt});
+                                let _ = socket.send(Message::Text(out.to_string())).await;
+                            }
+                            "skills_list" => {
+                                let list = state.skills.list_skills();
+                                let out = json!({"type": "skills_list", "skills": list});
+                                let _ = socket.send(Message::Text(out.to_string())).await;
+                            }
+                            "skill_exec" => {
+                                let skill_name = parsed.get("skill_name").and_then(|v| v.as_str()).unwrap_or("");
+                                let args = parsed.get("arguments").cloned().unwrap_or_else(|| json!({}));
+                                let req = SkillExecutionRequest {
+                                    skill_name: skill_name.to_string(),
+                                    arguments: args,
+                                };
+                                let res = state.skills.execute(&req);
+                                let out = json!({"type": "skill_result", "response": res});
+                                let _ = socket.send(Message::Text(out.to_string())).await;
+                            }
+                            "shell" => {
+                                let cmd_str = parsed.get("command").and_then(|v| v.as_str()).unwrap_or("echo shell ready");
+                                let res = Command::new("sh").arg("-c").arg(cmd_str).output().await;
+                                let out = match res {
+                                    Ok(o) => json!({
+                                        "type": "shell_output",
+                                        "stdout": String::from_utf8_lossy(&o.stdout),
+                                        "stderr": String::from_utf8_lossy(&o.stderr),
+                                        "exit_code": o.status.code().unwrap_or(-1),
+                                    }),
+                                    Err(e) => json!({
+                                        "type": "shell_error",
+                                        "error": e.to_string(),
+                                    }),
+                                };
+                                let _ = socket.send(Message::Text(out.to_string())).await;
+                            }
+                            "simd_eval" => {
+                                let sim = MojoSimdBridge::cosine_similarity(&[1.0, 0.0, 0.0, 0.0], &[1.0, 0.0, 0.0, 0.0]);
+                                let out = json!({
+                                    "type": "simd_result",
+                                    "cosine_similarity": sim,
+                                    "accelerated": MojoSimdBridge::is_mojo_accelerated(),
+                                    "version": MojoSimdBridge::version(),
                                 });
-                                if socket.send(Message::Text(err_out.to_string())).await.is_err() {
-                                    break;
+                                let _ = socket.send(Message::Text(out.to_string())).await;
+                            }
+                            _ => {
+                                let prompt = parsed.get("content").and_then(|v| v.as_str()).unwrap_or(&text);
+                                let start = Instant::now();
+                                let result = state.inference.generate(prompt, None, None).await;
+                                let duration = start.elapsed().as_millis();
+
+                                match result {
+                                    Ok(reply) => {
+                                        let _ = state.db.record_turn("ws_user", prompt, &reply, duration as u64);
+                                        let out = json!({
+                                            "type": "response",
+                                            "content": reply,
+                                            "duration_ms": duration,
+                                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                                        });
+                                        if socket.send(Message::Text(out.to_string())).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                    Err(err) => {
+                                        let err_out = json!({
+                                            "type": "error",
+                                            "message": err.to_string(),
+                                        });
+                                        if socket.send(Message::Text(err_out.to_string())).await.is_err() {
+                                            break;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -423,6 +519,8 @@ pub fn create_router(state: GatewayState) -> Router {
         .route("/api/v1/discord/relay", post(discord_relay_handler))
         .route("/api/v1/shell", post(shell_handler))
         .route("/api/v1/tasks", post(create_task_handler).get(list_tasks_handler))
+        .route("/api/v1/skills", get(list_skills_handler))
+        .route("/api/v1/skills/execute", post(execute_skill_handler))
         .route("/v1/chat/completions", post(openai_completions_handler))
         .route("/v1/models", get(openai_models_handler))
         .route("/ws", get(ws_handler))
