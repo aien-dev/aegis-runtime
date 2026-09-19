@@ -121,20 +121,140 @@ impl MojoSimdBridge {
         }
     }
 
+    pub fn cosine_similarity_4d_fallback(a: [f32; 4], b: [f32; 4]) -> f32 {
+        for i in 0..4 {
+            if a[i].is_nan() || b[i].is_nan() || a[i].is_infinite() || b[i].is_infinite() {
+                return 0.0;
+            }
+        }
+        let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+        let norm_a = a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] * a[3];
+        let norm_b = b[0] * b[0] + b[1] * b[1] + b[2] * b[2] + b[3] * b[3];
+        if norm_a <= 0.0 || norm_b <= 0.0 || norm_a.is_nan() || norm_b.is_nan() {
+            0.0
+        } else {
+            let denom = norm_a.sqrt() * norm_b.sqrt();
+            if denom <= 0.0 || denom.is_nan() {
+                0.0
+            } else {
+                let res = dot / denom;
+                if res.is_nan() || res.is_infinite() {
+                    0.0
+                } else {
+                    res
+                }
+            }
+        }
+    }
+
+    pub fn cosine_similarity_fallback(a: &[f32], b: &[f32]) -> f32 {
+        if a.len() != b.len() || a.is_empty() {
+            return 0.0;
+        }
+
+        if a.len() == 4 {
+            let a_arr = [a[0], a[1], a[2], a[3]];
+            let b_arr = [b[0], b[1], b[2], b[3]];
+            return Self::cosine_similarity_4d_fallback(a_arr, b_arr);
+        }
+
+        let mut dot = 0.0f32;
+        let mut norm_a = 0.0f32;
+        let mut norm_b = 0.0f32;
+
+        for i in 0..a.len() {
+            if a[i].is_nan() || b[i].is_nan() || a[i].is_infinite() || b[i].is_infinite() {
+                return 0.0;
+            }
+            dot += a[i] * b[i];
+            norm_a += a[i] * a[i];
+            norm_b += b[i] * b[i];
+        }
+
+        if norm_a <= 0.0 || norm_b <= 0.0 || norm_a.is_nan() || norm_b.is_nan() {
+            return 0.0;
+        }
+
+        let denom = norm_a.sqrt() * norm_b.sqrt();
+        if denom <= 0.0 || denom.is_nan() {
+            return 0.0;
+        }
+
+        let res = dot / denom;
+        if res.is_nan() || res.is_infinite() {
+            0.0
+        } else {
+            res
+        }
+    }
+
+    pub fn simd_accumulate_fallback(base_val: f32, scale: f32, steps: i32) -> f32 {
+        if base_val.is_nan() || scale.is_nan() || steps <= 0 {
+            return 0.0;
+        }
+        let mut acc = [base_val, base_val * 1.5, base_val * 2.0, base_val * 2.5];
+        let step_vec = [scale, scale * 1.1, scale * 1.2, scale * 1.3];
+        let add_vec = [0.01f32, 0.02, 0.03, 0.04];
+        for _ in 0..steps {
+            for i in 0..4 {
+                acc[i] = acc[i] * step_vec[i] + add_vec[i];
+            }
+        }
+        acc.iter().sum()
+    }
+
+    pub fn token_entropy_fallback(probs: [f32; 4]) -> f32 {
+        let mut sum = 0.0f32;
+        for p in probs {
+            if p.is_nan() || p.is_infinite() {
+                continue;
+            }
+            if p > 0.00001 {
+                sum += p * (p - 1.0);
+            }
+        }
+        sum
+    }
+
+    pub fn token_projection_fallback(tokens: [f32; 4], weights: [f32; 4], bias: f32) -> f32 {
+        for i in 0..4 {
+            if tokens[i].is_nan() || weights[i].is_nan() || tokens[i].is_infinite() || weights[i].is_infinite() {
+                return 0.0;
+            }
+        }
+        if bias.is_nan() || bias.is_infinite() {
+            return 0.0;
+        }
+        tokens[0] * weights[0]
+            + tokens[1] * weights[1]
+            + tokens[2] * weights[2]
+            + tokens[3] * weights[3]
+            + bias
+    }
+
+    pub fn temperature_scale_fallback(logit: f32, temperature: f32) -> f32 {
+        if logit.is_nan() || temperature.is_nan() || logit.is_infinite() || temperature.is_infinite() {
+            return 0.0;
+        }
+        if temperature <= 0.0001 {
+            logit
+        } else {
+            let res = logit / temperature;
+            if res.is_nan() || res.is_infinite() {
+                logit
+            } else {
+                res
+            }
+        }
+    }
+
     pub fn cosine_similarity_4d(a: [f32; 4], b: [f32; 4]) -> f32 {
         if let Ok(bindings) = MojoSimdBindings::global() {
             unsafe {
                 (bindings.cosine_similarity_4d)(a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3])
             }
         } else {
-            let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-            let norm_a = a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] * a[3];
-            let norm_b = b[0] * b[0] + b[1] * b[1] + b[2] * b[2] + b[3] * b[3];
-            if norm_a <= 0.0 || norm_b <= 0.0 {
-                0.0
-            } else {
-                dot / (norm_a.sqrt() * norm_b.sqrt())
-            }
+            Self::cosine_similarity_4d_fallback(a, b)
         }
     }
 
@@ -149,37 +269,14 @@ impl MojoSimdBridge {
             return Self::cosine_similarity_4d(a_arr, b_arr);
         }
 
-        let mut dot = 0.0f32;
-        let mut norm_a = 0.0f32;
-        let mut norm_b = 0.0f32;
-
-        for i in 0..a.len() {
-            dot += a[i] * b[i];
-            norm_a += a[i] * a[i];
-            norm_b += b[i] * b[i];
-        }
-
-        let denom = norm_a.sqrt() * norm_b.sqrt();
-        if denom == 0.0 {
-            0.0
-        } else {
-            dot / denom
-        }
+        Self::cosine_similarity_fallback(a, b)
     }
 
     pub fn simd_accumulate(base_val: f32, scale: f32, steps: i32) -> f32 {
         if let Ok(bindings) = MojoSimdBindings::global() {
             unsafe { (bindings.simd_accumulate)(base_val, scale, steps) }
         } else {
-            let mut acc = [base_val, base_val * 1.5, base_val * 2.0, base_val * 2.5];
-            let step_vec = [scale, scale * 1.1, scale * 1.2, scale * 1.3];
-            let add_vec = [0.01f32, 0.02, 0.03, 0.04];
-            for _ in 0..steps {
-                for i in 0..4 {
-                    acc[i] = acc[i] * step_vec[i] + add_vec[i];
-                }
-            }
-            acc.iter().sum()
+            Self::simd_accumulate_fallback(base_val, scale, steps)
         }
     }
 
@@ -187,13 +284,7 @@ impl MojoSimdBridge {
         if let Ok(bindings) = MojoSimdBindings::global() {
             unsafe { (bindings.token_entropy_simd)(probs[0], probs[1], probs[2], probs[3]) }
         } else {
-            let mut sum = 0.0f32;
-            for p in probs {
-                if p > 0.00001 {
-                    sum += p * (p - 1.0);
-                }
-            }
-            sum
+            Self::token_entropy_fallback(probs)
         }
     }
 
@@ -206,11 +297,7 @@ impl MojoSimdBridge {
                 )
             }
         } else {
-            tokens[0] * weights[0]
-                + tokens[1] * weights[1]
-                + tokens[2] * weights[2]
-                + tokens[3] * weights[3]
-                + bias
+            Self::token_projection_fallback(tokens, weights, bias)
         }
     }
 
@@ -218,11 +305,7 @@ impl MojoSimdBridge {
         if let Ok(bindings) = MojoSimdBindings::global() {
             unsafe { (bindings.temperature_scale_simd)(logit, temperature) }
         } else {
-            if temperature <= 0.0001 {
-                logit
-            } else {
-                logit / temperature
-            }
+            Self::temperature_scale_fallback(logit, temperature)
         }
     }
 
@@ -268,5 +351,96 @@ mod tests {
     fn test_temperature_scale() {
         let scaled = MojoSimdBridge::temperature_scale(2.0, 0.5);
         assert!((scaled - 4.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_fallback_zero_vectors() {
+        let zero = [0.0f32, 0.0, 0.0, 0.0];
+        let non_zero = [1.0f32, 2.0, 3.0, 4.0];
+        let sim1 = MojoSimdBridge::cosine_similarity_4d_fallback(zero, non_zero);
+        assert_eq!(sim1, 0.0);
+
+        let sim2 = MojoSimdBridge::cosine_similarity_4d_fallback(zero, zero);
+        assert_eq!(sim2, 0.0);
+
+        let zero_slice = vec![0.0f32; 8];
+        let non_zero_slice = vec![1.0f32; 8];
+        assert_eq!(MojoSimdBridge::cosine_similarity_fallback(&zero_slice, &non_zero_slice), 0.0);
+    }
+
+    #[test]
+    fn test_fallback_identical_and_opposite_vectors() {
+        let v1 = [3.0f32, -4.0, 5.0, -1.0];
+        let sim_ident = MojoSimdBridge::cosine_similarity_4d_fallback(v1, v1);
+        assert!((sim_ident - 1.0).abs() < 1e-4);
+
+        let v_opp = [-3.0f32, 4.0, -5.0, 1.0];
+        let sim_opp = MojoSimdBridge::cosine_similarity_4d_fallback(v1, v_opp);
+        assert!((sim_opp - (-1.0)).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_fallback_orthogonal_vectors() {
+        let v1 = [1.0f32, 0.0, 0.0, 0.0];
+        let v2 = [0.0f32, 1.0, 0.0, 0.0];
+        let sim = MojoSimdBridge::cosine_similarity_4d_fallback(v1, v2);
+        assert_eq!(sim, 0.0);
+
+        let v3 = [0.0f32, 0.0, 1.0, 0.0];
+        let v4 = [0.0f32, 0.0, 0.0, 1.0];
+        assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(v3, v4), 0.0);
+    }
+
+    #[test]
+    fn test_fallback_nan_and_inf_handling() {
+        let nan_vec = [f32::NAN, 1.0, 2.0, 3.0];
+        let normal_vec = [1.0f32, 2.0, 3.0, 4.0];
+        assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(nan_vec, normal_vec), 0.0);
+
+        let inf_vec = [f32::INFINITY, 1.0, 2.0, 3.0];
+        assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(inf_vec, normal_vec), 0.0);
+
+        let neg_inf_vec = [f32::NEG_INFINITY, 1.0, 2.0, 3.0];
+        assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(neg_inf_vec, normal_vec), 0.0);
+
+        // Token projection with NaN/Inf
+        assert_eq!(MojoSimdBridge::token_projection_fallback(nan_vec, normal_vec, 1.0), 0.0);
+        assert_eq!(MojoSimdBridge::token_projection_fallback(normal_vec, normal_vec, f32::NAN), 0.0);
+
+        // Temperature scale with NaN/Inf
+        assert_eq!(MojoSimdBridge::temperature_scale_fallback(f32::NAN, 1.0), 0.0);
+        assert_eq!(MojoSimdBridge::temperature_scale_fallback(2.0, f32::NAN), 0.0);
+        assert_eq!(MojoSimdBridge::temperature_scale_fallback(2.0, f32::INFINITY), 0.0);
+    }
+
+    #[test]
+    fn test_fallback_temperature_scale_edge_cases() {
+        // Zero or near-zero temperature should return unscaled logit
+        assert_eq!(MojoSimdBridge::temperature_scale_fallback(5.0, 0.0), 5.0);
+        assert_eq!(MojoSimdBridge::temperature_scale_fallback(5.0, 0.00005), 5.0);
+
+        // Normal scaling
+        let scaled = MojoSimdBridge::temperature_scale_fallback(10.0, 2.0);
+        assert!((scaled - 5.0).abs() < 1e-4);
+
+        let low_temp = MojoSimdBridge::temperature_scale_fallback(10.0, 0.5);
+        assert!((low_temp - 20.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_fallback_token_projection_and_entropy() {
+        let tokens = [2.0f32, 4.0, 6.0, 8.0];
+        let weights = [0.1f32, 0.2, 0.3, 0.4];
+        let bias = 0.5f32;
+        let proj = MojoSimdBridge::token_projection_fallback(tokens, weights, bias);
+        let expected = 2.0 * 0.1 + 4.0 * 0.2 + 6.0 * 0.3 + 8.0 * 0.4 + 0.5;
+        assert!((proj - expected).abs() < 1e-4);
+
+        let entropy = MojoSimdBridge::token_entropy_fallback([0.5, 0.5, 0.0, 0.0]);
+        assert!(entropy < 0.0);
+
+        // Mismatched slice length
+        assert_eq!(MojoSimdBridge::cosine_similarity_fallback(&[1.0, 2.0], &[1.0]), 0.0);
+        assert_eq!(MojoSimdBridge::cosine_similarity_fallback(&[], &[]), 0.0);
     }
 }

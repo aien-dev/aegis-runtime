@@ -12,5 +12,6 @@ pub use gateway::{create_router, start_gateway, GatewayState, HealthResponse};
 pub use heartbeat::{HeartbeatEngine, PulseReceipt};
 pub use inference::{ChatTurnResponse, InferenceEngine, ToolCallFunction, ToolCallItem};
 pub use mojo_bridge::MojoSimdBridge;
-pub use persistence::{CrumbRecord, Database, TaskRecord};
+pub use persistence::{CrumbRecord, Database, TaskRecord, TurnRecord};
 pub use skills::{SkillDefinition, SkillExecutionRequest, SkillExecutionResponse, SkillRegistry};
+pub use vault::{VaultResolver, REDACTED_MARKER};

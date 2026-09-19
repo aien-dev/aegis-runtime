@@ -8,6 +8,8 @@ use crate::inference::InferenceEngine;
 use crate::persistence::Database;
 use crate::skills::{SkillExecutionRequest, SkillRegistry};
 
+pub const DEFAULT_MAX_CONTEXT_TOKENS: usize = 8192;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolExecutionRecord {
     pub call_id: String,
@@ -57,6 +59,36 @@ impl AgentEngine {
         self.skills.clone()
     }
 
+    pub fn estimate_tokens(messages: &[serde_json::Value]) -> usize {
+        let mut count = 0;
+        for m in messages {
+            if let Some(content) = m.get("content").and_then(|c| c.as_str()) {
+                count += (content.split_whitespace().count() * 4) / 3 + 4;
+            }
+            if let Some(calls) = m.get("tool_calls").and_then(|c| c.as_array()) {
+                for call in calls {
+                    if let Ok(serialized) = serde_json::to_string(call) {
+                        count += (serialized.split_whitespace().count() * 4) / 3 + 4;
+                    }
+                }
+            }
+        }
+        count
+    }
+
+    pub fn prune_context_window(messages: &mut Vec<serde_json::Value>, token_budget: usize) -> bool {
+        if messages.len() <= 2 {
+            return false;
+        }
+        let mut pruned = false;
+        while messages.len() > 2 && Self::estimate_tokens(messages) > token_budget {
+            // Retain system prompt (index 0) and initial user goal (index 1), prune oldest historical turn
+            messages.remove(2);
+            pruned = true;
+        }
+        pruned
+    }
+
     pub async fn execute_task(
         &self,
         goal: &str,
@@ -89,6 +121,9 @@ impl AgentEngine {
         for turn in 1..=max_turns {
             turns_taken = turn;
             info!("Agent loop turn {}/{}", turn, max_turns);
+
+            // Context window management: trim to budget before sending to model
+            Self::prune_context_window(&mut messages, DEFAULT_MAX_CONTEXT_TOKENS);
 
             let turn_res = self
                 .inference
@@ -224,5 +259,96 @@ mod tests {
 
         let registered = agent.skills().list_skills();
         assert!(!registered.is_empty());
+    }
+
+    #[test]
+    fn test_agent_token_estimation_and_boundary_pruning() {
+        let mut messages = vec![
+            json!({"role": "system", "content": "You are OpenClaw."}),
+            json!({"role": "user", "content": "Initial user task."}),
+            json!({"role": "assistant", "content": "Executing intermediate action step 1."}),
+            json!({"role": "tool", "content": "Output of intermediate step 1 with lots of verbose debugging details here."}),
+            json!({"role": "assistant", "content": "Executing intermediate action step 2."}),
+            json!({"role": "tool", "content": "Output of intermediate step 2."}),
+        ];
+
+        let initial_tokens = AgentEngine::estimate_tokens(&messages);
+        assert!(initial_tokens > 20);
+
+        // Pruning with huge budget should not change messages
+        let pruned_none = AgentEngine::prune_context_window(&mut messages, 10000);
+        assert!(!pruned_none);
+        assert_eq!(messages.len(), 6);
+
+        // Pruning with tiny budget should remove intermediate turns down to index 0 and 1
+        let pruned = AgentEngine::prune_context_window(&mut messages, 10);
+        assert!(pruned);
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[1]["role"], "user");
+
+        // Boundary: calling prune when only 2 messages remain should return false
+        let pruned_again = AgentEngine::prune_context_window(&mut messages, 0);
+        assert!(!pruned_again);
+        assert_eq!(messages.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_agent_tool_error_handling_and_recovery() {
+        let inference = Arc::new(InferenceEngine::new(
+            Some("http://127.0.0.1:9999/v1/chat/completions".to_string()),
+            None,
+        ));
+        let skills = Arc::new(SkillRegistry::new());
+        let agent = AgentEngine::new(inference, skills.clone(), None);
+
+        // Test executing unknown tool directly via skills registry
+        let unknown_req = SkillExecutionRequest {
+            skill_name: "nonexistent_custom_skill".to_string(),
+            arguments: json!({}),
+        };
+        let res = skills.execute(&unknown_req);
+        assert!(!res.success);
+        assert!(res.error.unwrap().contains("not found in registry"));
+
+        // Test tool parameter validation (e.g. read_file with empty path)
+        let empty_path_req = SkillExecutionRequest {
+            skill_name: "read_file".to_string(),
+            arguments: json!({"path": ""}),
+        };
+        let empty_res = skills.execute(&empty_path_req);
+        assert!(!empty_res.success);
+        assert_eq!(empty_res.error.unwrap(), "Path cannot be empty");
+
+        // Test autonomous agent task execution under local fallback (does not panic)
+        let exec_res = agent
+            .execute_task("Run status check on local machine", None, 1)
+            .await;
+        assert!(exec_res.is_ok());
+        let result = exec_res.unwrap();
+        assert!(result.completed);
+        assert_eq!(result.turns_taken, 1);
+        assert!(!result.final_response.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_agent_multiturn_conversational_history() {
+        let inference = Arc::new(InferenceEngine::new(
+            Some("http://127.0.0.1:9999/v1/chat/completions".to_string()),
+            None,
+        ));
+        let skills = Arc::new(SkillRegistry::new());
+        let agent = AgentEngine::new(inference, skills.clone(), None);
+
+        let custom_system = "You are OpenClaw sovereign unit test runner.";
+        let result = agent
+            .execute_task("Perform sequential tasks", Some(custom_system), 2)
+            .await
+            .unwrap();
+
+        let _duration = result.duration_ms;
+        assert!(result.turns_taken >= 1);
+        assert_eq!(result.steps.len(), 1);
+        assert!(result.completed);
     }
 }

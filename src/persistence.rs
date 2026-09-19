@@ -28,6 +28,17 @@ pub struct CrumbRecord {
     pub created_at: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TurnRecord {
+    pub id: i64,
+    pub session_id: String,
+    pub role: String,
+    pub prompt: String,
+    pub response: String,
+    pub duration_ms: u64,
+    pub created_at: String,
+}
+
 pub struct Database {
     conn: Arc<Mutex<Connection>>,
     transcript_path: Option<PathBuf>,
@@ -167,6 +178,31 @@ impl Database {
         );
 
         Ok(())
+    }
+
+    pub fn list_recent_turns(&self, limit: usize) -> Result<Vec<TurnRecord>, rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, role, prompt, response, duration_ms, created_at
+             FROM turns ORDER BY id DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], |row| {
+            Ok(TurnRecord {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                role: row.get(2)?,
+                prompt: row.get(3)?,
+                response: row.get(4)?,
+                duration_ms: row.get::<_, i64>(5)? as u64,
+                created_at: row.get(6)?,
+            })
+        })?;
+
+        let mut turns = Vec::new();
+        for r in rows {
+            turns.push(r?);
+        }
+        Ok(turns)
     }
 
     pub fn record_heartbeat_tick(&self, receipt: &PulseReceipt) -> Result<(), rusqlite::Error> {
