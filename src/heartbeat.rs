@@ -110,11 +110,7 @@ impl HeartbeatEngine {
                     } else {
                         &task.payload
                     };
-                    let output = Command::new("sh")
-                        .arg("-c")
-                        .arg(cmd_to_run)
-                        .output()
-                        .await;
+                    let output = Command::new("sh").arg("-c").arg(cmd_to_run).output().await;
 
                     let res_text = match output {
                         Ok(o) => {
@@ -214,7 +210,8 @@ mod tests {
         let db = Arc::new(Database::open_in_memory().unwrap());
         db.create_task("hb1", "max_health", "check").unwrap();
         db.create_task("hb2", "consolidate_memory", "sync").unwrap();
-        db.create_task("hb3", "shell_exec", "echo 'heartbeat task success'").unwrap();
+        db.create_task("hb3", "shell_exec", "echo 'heartbeat task success'")
+            .unwrap();
 
         let engine = HeartbeatEngine::new(60, db.clone());
         let receipt = engine.pulse_once().await;

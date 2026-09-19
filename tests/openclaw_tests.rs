@@ -4,8 +4,8 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use openclaw::{
-    create_router, Database, GatewayState, HeartbeatEngine, InferenceEngine, MojoSimdBridge,
-    SkillRegistry,
+    create_router, AgentEngine, Database, GatewayState, HeartbeatEngine, InferenceEngine,
+    MojoSimdBridge, SkillRegistry,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -18,8 +18,17 @@ fn create_test_state() -> GatewayState {
         Some("http://127.0.0.1:9999/v1/chat/completions".to_string()),
         None,
     ));
-    let heartbeat = Arc::new(HeartbeatEngine::with_inference(60, db.clone(), inference.clone()));
+    let heartbeat = Arc::new(HeartbeatEngine::with_inference(
+        60,
+        db.clone(),
+        inference.clone(),
+    ));
     let skills = Arc::new(SkillRegistry::new());
+    let agent = Arc::new(AgentEngine::new(
+        inference.clone(),
+        skills.clone(),
+        Some(db.clone()),
+    ));
 
     GatewayState {
         start_time: Instant::now(),
@@ -27,6 +36,7 @@ fn create_test_state() -> GatewayState {
         inference,
         heartbeat,
         skills,
+        agent,
     }
 }
 
@@ -375,4 +385,36 @@ async fn test_mojo_simd_bridge_operations() {
 
     let entropy = MojoSimdBridge::token_entropy([0.5, 0.5, 0.0, 0.0]);
     assert!(entropy < 0.0);
+}
+
+#[tokio::test]
+async fn test_gateway_agent_run_endpoint() {
+    let state = create_test_state();
+    let app = create_router(state);
+
+    let req_payload = serde_json::json!({
+        "prompt": "Status and telemetry check",
+        "max_turns": 2
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/agent/run")
+                .header("Content-Type", "application/json")
+                .body(Body::from(req_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["status"], "completed");
+    assert_eq!(body["prompt"], "Status and telemetry check");
+    assert!(body["steps"].is_array());
 }
