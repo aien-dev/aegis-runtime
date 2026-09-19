@@ -2,7 +2,8 @@ use libloading::{Library, Symbol};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-pub const DEFAULT_SO_PATH: &str = "/home/drakestapleton/workspace/openclaw-rs/mojo/libopenclaw_simd.so";
+pub const DEFAULT_SO_PATH: &str =
+    "/home/drakestapleton/workspace/openclaw-rs/mojo/libopenclaw_simd.so";
 
 pub fn default_so_path() -> PathBuf {
     if let Ok(p) = std::env::var("OPENCLAW_SIMD_SO_PATH") {
@@ -57,7 +58,9 @@ impl MojoSimdBindings {
         }
 
         unsafe {
-            let lib: &'static Library = Box::leak(Box::new(Library::new(p).map_err(|e| format!("Failed to dlopen {:?}: {}", p, e))?));
+            let lib: &'static Library = Box::leak(Box::new(
+                Library::new(p).map_err(|e| format!("Failed to dlopen {:?}: {}", p, e))?,
+            ));
 
             let version: Symbol<FnVersion> = lib
                 .get(b"openclaw_simd_version\0")
@@ -121,10 +124,7 @@ impl MojoSimdBridge {
     pub fn cosine_similarity_4d(a: [f32; 4], b: [f32; 4]) -> f32 {
         if let Ok(bindings) = MojoSimdBindings::global() {
             unsafe {
-                (bindings.cosine_similarity_4d)(
-                    a[0], a[1], a[2], a[3],
-                    b[0], b[1], b[2], b[3],
-                )
+                (bindings.cosine_similarity_4d)(a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3])
             }
         } else {
             let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
@@ -201,9 +201,8 @@ impl MojoSimdBridge {
         if let Ok(bindings) = MojoSimdBindings::global() {
             unsafe {
                 (bindings.token_projection_simd)(
-                    tokens[0], tokens[1], tokens[2], tokens[3],
-                    weights[0], weights[1], weights[2], weights[3],
-                    bias,
+                    tokens[0], tokens[1], tokens[2], tokens[3], weights[0], weights[1], weights[2],
+                    weights[3], bias,
                 )
             }
         } else {

@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 
 pub const REDACTED_MARKER: &str = "[REDACTED_BY_ATLAS_VAULT]";
 
@@ -29,11 +29,7 @@ impl VaultResolver {
         }
 
         // Try atlas-vault CLI binary first
-        if let Ok(output) = Command::new("atlas-vault")
-            .arg("get")
-            .arg(key)
-            .output()
-        {
+        if let Ok(output) = Command::new("atlas-vault").arg("get").arg(key).output() {
             if output.status.success() {
                 let val = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !val.is_empty() {
@@ -49,7 +45,10 @@ impl VaultResolver {
             return Ok(val);
         }
 
-        Err(format!("Secret '{}' not found in hardware TPM vault or process environment", key))
+        Err(format!(
+            "Secret '{}' not found in hardware TPM vault or process environment",
+            key
+        ))
     }
 
     pub fn redact_sensitive_text(&self, text: &str) -> String {
@@ -80,8 +79,11 @@ mod tests {
         let secret = vault.resolve_secret("TEST_TOKEN_SECRET").unwrap();
         assert_eq!(secret, "super_secret_12345");
 
-        let output = format!("Connecting with bearer super_secret_12345 to endpoint");
+        let output = "Connecting with bearer super_secret_12345 to endpoint".to_string();
         let redacted = vault.redact_sensitive_text(&output);
-        assert_eq!(redacted, format!("Connecting with bearer {} to endpoint", REDACTED_MARKER));
+        assert_eq!(
+            redacted,
+            format!("Connecting with bearer {} to endpoint", REDACTED_MARKER)
+        );
     }
 }

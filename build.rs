@@ -7,7 +7,7 @@ fn main() {
     let dest_path = Path::new(&out_dir).join("libopenclaw_simd.so");
 
     if let Ok(status) = Command::new("mojo")
-        .args(&[
+        .args([
             "build",
             "--emit",
             "shared-lib",

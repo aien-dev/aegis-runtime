@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Json, State,
+        State,
     },
     http::{header, StatusCode},
     response::{
@@ -10,7 +10,7 @@ use axum::{
         IntoResponse, Response,
     },
     routing::{get, post},
-    Router,
+    Json, Router,
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
+use crate::agent::{AgentEngine, AgentStep};
 use crate::heartbeat::HeartbeatEngine;
 use crate::inference::InferenceEngine;
 use crate::mojo_bridge::MojoSimdBridge;
@@ -37,6 +38,7 @@ pub struct GatewayState {
     pub inference: Arc<InferenceEngine>,
     pub heartbeat: Arc<HeartbeatEngine>,
     pub skills: Arc<SkillRegistry>,
+    pub agent: Arc<AgentEngine>,
 }
 
 #[derive(Serialize)]
@@ -96,7 +98,11 @@ pub async fn chat_handler(
     let start = Instant::now();
     let response = state
         .inference
-        .generate(&payload.prompt, payload.system.as_deref(), payload.temperature)
+        .generate(
+            &payload.prompt,
+            payload.system.as_deref(),
+            payload.temperature,
+        )
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -112,6 +118,46 @@ pub async fn chat_handler(
         content: response,
         model,
         duration_ms: duration,
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct AgentRunRequest {
+    pub prompt: String,
+    pub system: Option<String>,
+    pub max_turns: Option<usize>,
+}
+
+#[derive(Serialize)]
+pub struct AgentRunResponse {
+    pub status: &'static str,
+    pub prompt: String,
+    pub final_response: String,
+    pub steps: Vec<AgentStep>,
+    pub turns_taken: usize,
+    pub duration_ms: u128,
+    pub completed: bool,
+}
+
+pub async fn agent_run_handler(
+    State(state): State<GatewayState>,
+    Json(payload): Json<AgentRunRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let max_turns = payload.max_turns.unwrap_or(8);
+    let result = state
+        .agent
+        .execute_task(&payload.prompt, payload.system.as_deref(), max_turns)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(AgentRunResponse {
+        status: "completed",
+        prompt: payload.prompt,
+        final_response: result.final_response,
+        steps: result.steps,
+        turns_taken: result.turns_taken,
+        duration_ms: result.duration_ms,
+        completed: result.completed,
     }))
 }
 
@@ -270,10 +316,19 @@ pub async fn discord_relay_handler(
     State(state): State<GatewayState>,
     Json(payload): Json<DiscordRelayRequest>,
 ) -> impl IntoResponse {
-    let prompt = format!("[Discord from {} in {}]: {}", payload.author, payload.channel_id, payload.content);
-    let reply = state.inference.generate(&prompt, None, None).await.unwrap_or_else(|e| format!("Error: {}", e));
+    let prompt = format!(
+        "[Discord from {} in {}]: {}",
+        payload.author, payload.channel_id, payload.content
+    );
+    let reply = state
+        .inference
+        .generate(&prompt, None, None)
+        .await
+        .unwrap_or_else(|e| format!("Error: {}", e));
 
-    let _ = state.db.record_turn(&payload.author, &payload.content, &reply, 10);
+    let _ = state
+        .db
+        .record_turn(&payload.author, &payload.content, &reply, 10);
 
     Json(json!({
         "status": "relayed",
@@ -304,7 +359,12 @@ pub async fn shell_handler(
         .arg(&payload.command)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to execute command: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to execute command: {}", e),
+            )
+        })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -383,7 +443,8 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
     let welcome = json!({
         "type": "welcome",
         "gateway": "openclaw-rs",
-        "version": "0.1.0",
+        "engine": "OpenClaw WebSocket Gateway",
+        "status": "connected",
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
 
@@ -442,6 +503,27 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
                                 let res = state.skills.execute(&req);
                                 let out = json!({"type": "skill_result", "response": res});
                                 let _ = socket.send(Message::Text(out.to_string())).await;
+                            }
+                            "agent_run" => {
+                                let prompt = parsed.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+                                let max_turns = parsed.get("max_turns").and_then(|v| v.as_u64()).unwrap_or(8) as usize;
+                                let res = state.agent.execute_task(prompt, None, max_turns).await;
+                                match res {
+                                    Ok(exec_result) => {
+                                        let out = json!({
+                                            "type": "agent_result",
+                                            "result": exec_result,
+                                        });
+                                        let _ = socket.send(Message::Text(out.to_string())).await;
+                                    }
+                                    Err(e) => {
+                                        let out = json!({
+                                            "type": "agent_error",
+                                            "error": e.to_string(),
+                                        });
+                                        let _ = socket.send(Message::Text(out.to_string())).await;
+                                    }
+                                }
                             }
                             "shell" => {
                                 let cmd_str = parsed.get("command").and_then(|v| v.as_str()).unwrap_or("echo shell ready");
@@ -513,12 +595,16 @@ pub fn create_router(state: GatewayState) -> Router {
         .route("/health", get(health_handler))
         .route("/api/v1/health", get(health_handler))
         .route("/api/v1/chat", post(chat_handler))
+        .route("/api/v1/agent/run", post(agent_run_handler))
         .route("/api/v1/heartbeat/tick", post(trigger_heartbeat_handler))
         .route("/api/v1/events", get(sse_events_handler))
         .route("/events", get(sse_events_handler))
         .route("/api/v1/discord/relay", post(discord_relay_handler))
         .route("/api/v1/shell", post(shell_handler))
-        .route("/api/v1/tasks", post(create_task_handler).get(list_tasks_handler))
+        .route(
+            "/api/v1/tasks",
+            post(create_task_handler).get(list_tasks_handler),
+        )
         .route("/api/v1/skills", get(list_skills_handler))
         .route("/api/v1/skills/execute", post(execute_skill_handler))
         .route("/v1/chat/completions", post(openai_completions_handler))
@@ -534,7 +620,10 @@ pub fn create_router(state: GatewayState) -> Router {
         .with_state(state)
 }
 
-pub async fn start_gateway(state: GatewayState, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_gateway(
+    state: GatewayState,
+    port: u16,
+) -> Result<(), Box<dyn std::error::Error>> {
     let app = create_router(state);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("OpenClaw Gateway listening on http://{}", addr);

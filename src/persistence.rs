@@ -342,7 +342,8 @@ mod tests {
         let remaining = db.list_pending_tasks().unwrap();
         assert_eq!(remaining.len(), 0);
 
-        db.store_crumb("summary", "all tests passed", "cortex").unwrap();
+        db.store_crumb("summary", "all tests passed", "cortex")
+            .unwrap();
         let crumbs = db.get_recent_crumbs("cortex", 10).unwrap();
         assert_eq!(crumbs.len(), 1);
         assert_eq!(crumbs[0].key, "summary");
