@@ -2,7 +2,7 @@
 name = "openclaw"
 version = "0.2.0"
 edition = "2021"
-authors = ["AIEN Sovereign Systems & Contributors <sovereign@aien.dev>"]
+authors = ["Drake Stapleton <drake.aien@proton.me>"]
 license = "Apache-2.0 WITH LLVM-exception"
 description = "Native sovereign agent runtime with Axum WebSocket gateway, heartbeat loop, and local Modular MAX inference on Grace Blackwell GB10"
 repository = "https://github.com/aien-dev/openclaw-rs"
