@@ -50,6 +50,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "aien-scheduler"
+version = "0.1.0"
+dependencies = [
+ "aien-inference-abi",
+ "aien-kv-cache",
+ "futures-util",
+ "parking_lot",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "spark-max-rs",
+ "tokio",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1410,12 +1425,15 @@ version = "0.2.0"
 dependencies = [
  "aien-inference-abi",
  "aien-kv-cache",
+ "aien-scheduler",
  "anyhow",
+ "async-trait",
  "axum",
  "chrono",
  "clap",
  "futures-util",
  "libloading",
+ "parking_lot",
  "reqwest",
  "rusqlite",
  "serde",
@@ -2104,6 +2122,24 @@ checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "spark-max-cabi"
+version = "0.1.0"
+dependencies = [
+ "libloading",
+ "tracing",
+]
+
+[[package]]
+name = "spark-max-rs"
+version = "0.1.0"
+dependencies = [
+ "aien-inference-abi",
+ "async-trait",
+ "spark-max-cabi",
+ "tracing",
 ]
 
 [[package]]

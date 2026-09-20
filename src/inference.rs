@@ -1,30 +1,24 @@
+//! In-process embedded inference backend and HTTP adapter for OpenClaw.
+//! Connects OpenClaw directly to NativeTransformerBackend and TinyLlamaTokenizer in-process,
+//! eliminating the localhost HTTP inference daemon requirement.
+
+use aien_inference_abi::backend::{ReferenceCpuBackend, TensorBackend};
+use aien_inference_abi::blackwell_backend::BlackwellGb10Backend;
+use aien_inference_abi::tokenizer::TinyLlamaTokenizer;
+use aien_inference_abi::transformer_backend::NativeTransformerBackend;
+use aien_inference_abi::weights::TransformerWeights;
+use aien_inference_abi::{ExecutionSurface, ModelConfig};
+use aien_kv_cache::SharedKvManager;
+use aien_scheduler::AienScheduler;
+use async_trait::async_trait;
+use parking_lot::{Mutex, RwLock};
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
-use tracing::warn;
-
-pub struct InferenceEngine {
-    client: Client,
-    endpoint: String,
-    model_id: String,
-}
-
-#[derive(Deserialize)]
-struct MaxChoice {
-    message: MaxMessage,
-}
-
-#[derive(Deserialize)]
-struct MaxMessage {
-    content: Option<String>,
-    reasoning: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct MaxResponse {
-    choices: Vec<MaxChoice>,
-}
+use tracing::{info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallFunction {
@@ -49,6 +43,22 @@ pub struct ChatTurnResponse {
 }
 
 #[derive(Deserialize)]
+struct MaxChoice {
+    message: MaxMessage,
+}
+
+#[derive(Deserialize)]
+struct MaxMessage {
+    content: Option<String>,
+    reasoning: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MaxResponse {
+    choices: Vec<MaxChoice>,
+}
+
+#[derive(Deserialize)]
 struct MaxChoiceWithTools {
     message: MaxMessageWithTools,
     finish_reason: Option<String>,
@@ -66,7 +76,75 @@ struct MaxResponseWithTools {
     choices: Vec<MaxChoiceWithTools>,
 }
 
-impl InferenceEngine {
+/// Unified inference engine interface supporting both in-process embedded
+/// and external HTTP inference backends.
+#[async_trait]
+pub trait InferenceEngine: Send + Sync {
+    /// Identifier of the model being served.
+    fn model_id(&self) -> String;
+
+    /// Endpoint description or URI.
+    fn endpoint(&self) -> String;
+
+    /// Generates text from a prompt with optional system prompt and temperature.
+    async fn generate(
+        &self,
+        prompt: &str,
+        system_prompt: Option<&str>,
+        temperature: Option<f32>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        self.generate_with_tokens(prompt, system_prompt, temperature, Some(1024))
+            .await
+    }
+
+    /// Generates text with explicit token limit.
+    async fn generate_with_tokens(
+        &self,
+        prompt: &str,
+        system_prompt: Option<&str>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Executes multi-turn chat generation from structured messages.
+    async fn generate_chat(
+        &self,
+        messages: &[serde_json::Value],
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Executes multi-turn chat generation with tool definitions.
+    async fn generate_chat_with_tools(
+        &self,
+        messages: &[serde_json::Value],
+        tools: Option<&[serde_json::Value]>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<ChatTurnResponse, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Streams chat completions over HTTP (supported on HTTP backend).
+    async fn stream_chat(
+        &self,
+        _messages: &[serde_json::Value],
+        _temperature: Option<f32>,
+        _max_tokens: Option<u32>,
+    ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
+        Err(anyhow::anyhow!("Streaming is not supported on embedded inference backend").into())
+    }
+
+    /// Validates inference engine availability and readiness.
+    async fn check_health(&self) -> bool;
+}
+
+/// External HTTP inference backend connecting to an OpenAI-compatible daemon.
+pub struct HttpInferenceBackend {
+    client: Client,
+    endpoint: String,
+    model_id: String,
+}
+
+impl HttpInferenceBackend {
     pub fn new(endpoint: Option<String>, model_id: Option<String>) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(90))
@@ -80,26 +158,19 @@ impl InferenceEngine {
             model_id: model_id.unwrap_or_else(|| "atlas-lightning-omni".to_string()),
         }
     }
+}
 
-    pub fn model_id(&self) -> String {
+#[async_trait]
+impl InferenceEngine for HttpInferenceBackend {
+    fn model_id(&self) -> String {
         self.model_id.clone()
     }
 
-    pub fn endpoint(&self) -> String {
+    fn endpoint(&self) -> String {
         self.endpoint.clone()
     }
 
-    pub async fn generate(
-        &self,
-        prompt: &str,
-        system_prompt: Option<&str>,
-        temperature: Option<f32>,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        self.generate_with_tokens(prompt, system_prompt, temperature, Some(1024))
-            .await
-    }
-
-    pub async fn generate_with_tokens(
+    async fn generate_with_tokens(
         &self,
         prompt: &str,
         system_prompt: Option<&str>,
@@ -107,16 +178,14 @@ impl InferenceEngine {
         max_tokens: Option<u32>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let mut messages = Vec::new();
-
         if let Some(sys) = system_prompt {
             messages.push(json!({"role": "system", "content": sys}));
         }
         messages.push(json!({"role": "user", "content": prompt}));
-
         self.generate_chat(&messages, temperature, max_tokens).await
     }
 
-    pub async fn generate_chat(
+    async fn generate_chat(
         &self,
         messages: &[serde_json::Value],
         temperature: Option<f32>,
@@ -160,7 +229,7 @@ impl InferenceEngine {
         }
     }
 
-    pub async fn generate_chat_with_tools(
+    async fn generate_chat_with_tools(
         &self,
         messages: &[serde_json::Value],
         tools: Option<&[serde_json::Value]>,
@@ -212,7 +281,7 @@ impl InferenceEngine {
         }
     }
 
-    pub async fn stream_chat(
+    async fn stream_chat(
         &self,
         messages: &[serde_json::Value],
         temperature: Option<f32>,
@@ -230,7 +299,7 @@ impl InferenceEngine {
         Ok(res)
     }
 
-    pub async fn check_health(&self) -> bool {
+    async fn check_health(&self) -> bool {
         let health_url = self.endpoint.replace("/v1/chat/completions", "/v1/models");
         match self.client.get(&health_url).send().await {
             Ok(res) => res.status().is_success(),
@@ -239,13 +308,521 @@ impl InferenceEngine {
     }
 }
 
+/// Embedded model owning tokenizer, transformer backend, continuous batching scheduler,
+/// and reference-counted KV cache.
+pub struct EmbeddedModel {
+    pub tokenizer: TinyLlamaTokenizer,
+    pub transformer: NativeTransformerBackend,
+    pub scheduler: Option<Arc<RwLock<AienScheduler>>>,
+    pub kv_cache: Option<SharedKvManager>,
+    pub config: ModelConfig,
+}
+
+impl EmbeddedModel {
+    pub fn new(
+        tokenizer: TinyLlamaTokenizer,
+        transformer: NativeTransformerBackend,
+        scheduler: Option<Arc<RwLock<AienScheduler>>>,
+        kv_cache: Option<SharedKvManager>,
+        config: ModelConfig,
+    ) -> Self {
+        Self {
+            tokenizer,
+            transformer,
+            scheduler,
+            kv_cache,
+            config,
+        }
+    }
+
+    /// Loads model with deterministic reference test weights.
+    pub fn with_reference_weights(config: &ModelConfig) -> Result<Self, String> {
+        let transformer = NativeTransformerBackend::with_reference_weights(config);
+        let tokenizer_path = find_tokenizer_path().unwrap_or_else(|| {
+            PathBuf::from("/home/drakestapleton/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json")
+        });
+
+        let tokenizer = if tokenizer_path.exists() {
+            TinyLlamaTokenizer::from_file(&tokenizer_path)
+                .map_err(|e| format!("Failed to load tokenizer: {}", e))?
+        } else {
+            let fixture_path = PathBuf::from("../aien-sovereign-core/crates/aien-inference-abi/fixtures/tokenizer.json");
+            if fixture_path.exists() {
+                TinyLlamaTokenizer::from_file(&fixture_path)
+                    .map_err(|e| format!("Failed to load fixture tokenizer: {}", e))?
+            } else {
+                return Err("No valid tokenizer.json found on filesystem".to_string());
+            }
+        };
+
+        Ok(Self {
+            tokenizer,
+            transformer,
+            scheduler: None,
+            kv_cache: None,
+            config: config.clone(),
+        })
+    }
+
+    /// Loads model from explicit safetensors checkpoint and tokenizer paths on disk.
+    pub fn load_checkpoint<P: AsRef<Path>>(
+        checkpoint_path: P,
+        tokenizer_path: P,
+        use_gpu: bool,
+        paged_kv: bool,
+    ) -> Result<Self, String> {
+        let config = ModelConfig::tinyllama_1_1b();
+        let weights = TransformerWeights::load_from_safetensors(checkpoint_path.as_ref(), &config)
+            .map_err(|e| format!("Failed to load safetensors checkpoint: {}", e))?;
+
+        let tensor_backend: Arc<dyn TensorBackend> = if use_gpu {
+            let surface = ExecutionSurface::detect();
+            if surface.is_accelerated_gpu() {
+                let gpu = BlackwellGb10Backend::new();
+                if gpu.is_available() {
+                    info!("Binding EmbeddedModel to Blackwell sm_121 GPU cuBLAS acceleration");
+                    Arc::new(gpu)
+                } else {
+                    info!("Blackwell GPU unavailable, falling back to CPU reference execution");
+                    Arc::new(ReferenceCpuBackend::new())
+                }
+            } else {
+                Arc::new(ReferenceCpuBackend::new())
+            }
+        } else {
+            Arc::new(ReferenceCpuBackend::new())
+        };
+
+        let transformer = if paged_kv {
+            NativeTransformerBackend::with_paged_kv_backend(weights, tensor_backend, 2048, config.block_size)?
+        } else {
+            NativeTransformerBackend::with_backend(weights, tensor_backend)
+        };
+
+        let kv_cache = transformer.kv_manager.clone();
+        let tokenizer = TinyLlamaTokenizer::from_file(tokenizer_path.as_ref())
+            .map_err(|e| format!("Failed to load tokenizer from {}: {}", tokenizer_path.as_ref().display(), e))?;
+
+        Ok(Self {
+            tokenizer,
+            transformer,
+            scheduler: None,
+            kv_cache,
+            config,
+        })
+    }
+
+    /// Attempts to load real TinyLlama weights from standard cache locations,
+    /// falling back to reference test weights if absent.
+    pub fn load_default_or_fallback() -> Result<Self, String> {
+        let model_path = find_checkpoint_path();
+        let tokenizer_path = find_tokenizer_path();
+
+        if let (Some(mp), Some(tp)) = (model_path, tokenizer_path) {
+            info!("Loading real TinyLlama checkpoint from {}", mp.display());
+            Self::load_checkpoint(&mp, &tp, true, true)
+        } else {
+            warn!("Real model checkpoint not found on disk, using reference test weights");
+            Self::with_reference_weights(&ModelConfig::tinyllama_1_1b())
+        }
+    }
+
+    /// Generates text completion from raw prompt string.
+    pub fn generate(&mut self, prompt: &str, max_tokens: usize, temperature: f32) -> Result<String, String> {
+        let prompt_tokens = self.tokenizer.encode(prompt)
+            .map_err(|e| format!("Encoding failed: {}", e))?;
+
+        let seq_id = generate_sequence_id();
+        let stop_tokens = [
+            TinyLlamaTokenizer::EOS_TOKEN_ID,
+            TinyLlamaTokenizer::UNK_TOKEN_ID,
+        ];
+
+        let generated_ids = self.transformer.generate_tokens(
+            seq_id,
+            &prompt_tokens,
+            max_tokens,
+            temperature,
+            &stop_tokens,
+        )?;
+
+        self.tokenizer.decode(&generated_ids)
+            .map_err(|e| format!("Decoding failed: {}", e))
+    }
+
+    /// Generates chat response from conversation messages using TinyLlama chat template.
+    pub fn generate_chat(
+        &mut self,
+        messages: &[serde_json::Value],
+        max_tokens: usize,
+        temperature: f32,
+    ) -> Result<String, String> {
+        let prompt = format_messages_to_prompt(messages, None);
+        self.generate(&prompt, max_tokens, temperature)
+    }
+
+    /// Generates chat response with tool support, parsing structured tool calls from output.
+    pub fn generate_chat_with_tools(
+        &mut self,
+        messages: &[serde_json::Value],
+        tools: Option<&[serde_json::Value]>,
+        max_tokens: usize,
+        temperature: f32,
+    ) -> Result<ChatTurnResponse, String> {
+        let prompt = format_messages_to_prompt(messages, tools);
+        let raw_output = self.generate(&prompt, max_tokens, temperature)?;
+        let (content, tool_calls) = parse_structured_tool_calls(&raw_output);
+
+        let finish_reason = if tool_calls.is_some() {
+            Some("tool_calls".to_string())
+        } else {
+            Some("stop".to_string())
+        };
+
+        Ok(ChatTurnResponse {
+            content,
+            reasoning: None,
+            tool_calls,
+            finish_reason,
+        })
+    }
+}
+
+/// In-process embedded inference backend executing inside OpenClaw.
+/// Completely removes localhost HTTP daemon dependency.
+pub struct EmbeddedInferenceBackend {
+    model: Arc<Mutex<EmbeddedModel>>,
+    model_id: String,
+}
+
+impl EmbeddedInferenceBackend {
+    pub fn new(model: EmbeddedModel) -> Self {
+        let model_id = model.config.model_id.clone();
+        Self {
+            model: Arc::new(Mutex::new(model)),
+            model_id,
+        }
+    }
+
+    pub fn with_reference_weights(config: &ModelConfig) -> Result<Self, String> {
+        let model = EmbeddedModel::with_reference_weights(config)?;
+        Ok(Self::new(model))
+    }
+
+    pub fn load_checkpoint<P: AsRef<Path>>(
+        checkpoint_path: P,
+        tokenizer_path: P,
+        use_gpu: bool,
+        paged_kv: bool,
+    ) -> Result<Self, String> {
+        let model = EmbeddedModel::load_checkpoint(checkpoint_path, tokenizer_path, use_gpu, paged_kv)?;
+        Ok(Self::new(model))
+    }
+
+    pub fn load_default_or_fallback() -> Result<Self, String> {
+        let model = EmbeddedModel::load_default_or_fallback()?;
+        Ok(Self::new(model))
+    }
+
+    pub fn load_or_fallback(
+        model_path: Option<&str>,
+        tokenizer_path: Option<&str>,
+    ) -> Result<Self, String> {
+        if let (Some(mp), Some(tp)) = (model_path, tokenizer_path) {
+            Self::load_checkpoint(Path::new(mp), Path::new(tp), true, true)
+        } else {
+            Self::load_default_or_fallback()
+        }
+    }
+}
+
+#[async_trait]
+impl InferenceEngine for EmbeddedInferenceBackend {
+    fn model_id(&self) -> String {
+        self.model_id.clone()
+    }
+
+    fn endpoint(&self) -> String {
+        "in-process://native-transformer".to_string()
+    }
+
+    async fn generate_with_tokens(
+        &self,
+        prompt: &str,
+        system_prompt: Option<&str>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let model = self.model.clone();
+        let prompt_str = if let Some(sys) = system_prompt {
+            format!("<|system|>\n{}</s>\n<|user|>\n{}</s>\n<|assistant|>\n", sys.trim(), prompt.trim())
+        } else {
+            format!("<|user|>\n{}</s>\n<|assistant|>\n", prompt.trim())
+        };
+        let max_toks = max_tokens.unwrap_or(256) as usize;
+        let temp = temperature.unwrap_or(0.0);
+
+        let result = tokio::task::spawn_blocking(move || {
+            let mut guard = model.lock();
+            guard.generate(&prompt_str, max_toks, temp)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("JoinError in embedded inference: {}", e))?
+        .map_err(|e| anyhow::anyhow!("Embedded inference error: {}", e))?;
+
+        Ok(result)
+    }
+
+    async fn generate_chat(
+        &self,
+        messages: &[serde_json::Value],
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let model = self.model.clone();
+        let msgs = messages.to_vec();
+        let max_toks = max_tokens.unwrap_or(256) as usize;
+        let temp = temperature.unwrap_or(0.0);
+
+        let result = tokio::task::spawn_blocking(move || {
+            let mut guard = model.lock();
+            guard.generate_chat(&msgs, max_toks, temp)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("JoinError in embedded inference: {}", e))?
+        .map_err(|e| anyhow::anyhow!("Embedded inference error: {}", e))?;
+
+        Ok(result)
+    }
+
+    async fn generate_chat_with_tools(
+        &self,
+        messages: &[serde_json::Value],
+        tools: Option<&[serde_json::Value]>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<ChatTurnResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let model = self.model.clone();
+        let msgs = messages.to_vec();
+        let tools_owned = tools.map(|t| t.to_vec());
+        let max_toks = max_tokens.unwrap_or(256) as usize;
+        let temp = temperature.unwrap_or(0.0);
+
+        let result = tokio::task::spawn_blocking(move || {
+            let mut guard = model.lock();
+            guard.generate_chat_with_tools(&msgs, tools_owned.as_deref(), max_toks, temp)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("JoinError in embedded inference: {}", e))?
+        .map_err(|e| anyhow::anyhow!("Embedded inference error: {}", e))?;
+
+        Ok(result)
+    }
+
+    async fn check_health(&self) -> bool {
+        true
+    }
+}
+
+/// Formats conversation turns and tool specifications into canonical TinyLlama chat template:
+/// `<|system|>\n{system}</s>\n<|user|>\n{user}</s>\n<|assistant|>\n`
+pub fn format_messages_to_prompt(
+    messages: &[serde_json::Value],
+    tools: Option<&[serde_json::Value]>,
+) -> String {
+    let mut prompt = String::new();
+    let mut system_prompt = String::new();
+
+    if let Some(t_list) = tools {
+        if !t_list.is_empty() {
+            let tools_json = serde_json::to_string_pretty(t_list).unwrap_or_default();
+            system_prompt.push_str(&format!(
+                "You have access to the following tools:\n{}\n\nTo execute a tool call, output ONLY a JSON object in this format:\n```json\n{{\n  \"name\": \"<tool_name>\",\n  \"arguments\": {{ ... }}\n}}\n```\nIf no tool call is needed, provide your final response directly.\n",
+                tools_json
+            ));
+        }
+    }
+
+    for msg in messages {
+        let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
+        let content = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
+
+        match role {
+            "system" => {
+                if !system_prompt.is_empty() {
+                    system_prompt.push('\n');
+                }
+                system_prompt.push_str(content);
+            }
+            "user" => {
+                if !system_prompt.is_empty() {
+                    prompt.push_str(&format!("<|system|>\n{}</s>\n", system_prompt.trim()));
+                    system_prompt.clear();
+                }
+                prompt.push_str(&format!("<|user|>\n{}</s>\n", content.trim()));
+            }
+            "assistant" => {
+                if !system_prompt.is_empty() {
+                    prompt.push_str(&format!("<|system|>\n{}</s>\n", system_prompt.trim()));
+                    system_prompt.clear();
+                }
+                if let Some(tool_calls) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
+                    let mut tc_text = String::new();
+                    for tc in tool_calls {
+                        let name = tc.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).unwrap_or("");
+                        let args = tc.get("function").and_then(|f| f.get("arguments")).and_then(|a| a.as_str()).unwrap_or("{}");
+                        tc_text.push_str(&format!("```json\n{{\"name\": \"{}\", \"arguments\": {}}}\n```\n", name, args));
+                    }
+                    prompt.push_str(&format!("<|assistant|>\n{}{}\n</s>\n", content.trim(), tc_text.trim()));
+                } else {
+                    prompt.push_str(&format!("<|assistant|>\n{}</s>\n", content.trim()));
+                }
+            }
+            "tool" => {
+                prompt.push_str(&format!("<|user|>\n[Tool Output]: {}</s>\n", content.trim()));
+            }
+            _ => {
+                prompt.push_str(&format!("<|user|>\n{}</s>\n", content.trim()));
+            }
+        }
+    }
+
+    if !system_prompt.is_empty() {
+        prompt.push_str(&format!("<|system|>\n{}</s>\n", system_prompt.trim()));
+    }
+
+    prompt.push_str("<|assistant|>\n");
+    prompt
+}
+
+/// Parses structured tool call JSON out of model output.
+pub fn parse_structured_tool_calls(text: &str) -> (Option<String>, Option<Vec<ToolCallItem>>) {
+    // 1. Check for ```json ... ``` blocks
+    if let Some(start) = text.find("```json") {
+        let code_start = start + 7;
+        if let Some(end) = text[code_start..].find("```") {
+            let json_str = text[code_start..code_start + end].trim();
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                if let Some(item) = extract_tool_call_from_value(&val) {
+                    let prefix = text[..start].trim().to_string();
+                    let content = if prefix.is_empty() { None } else { Some(prefix) };
+                    return (content, Some(vec![item]));
+                }
+            }
+        }
+    }
+
+    // 2. Check for <tool_call> ... </tool_call> tags
+    if let Some(start) = text.find("<tool_call>") {
+        let code_start = start + 11;
+        if let Some(end) = text[code_start..].find("</tool_call>") {
+            let json_str = text[code_start..code_start + end].trim();
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                if let Some(item) = extract_tool_call_from_value(&val) {
+                    let prefix = text[..start].trim().to_string();
+                    let content = if prefix.is_empty() { None } else { Some(prefix) };
+                    return (content, Some(vec![item]));
+                }
+            }
+        }
+    }
+
+    // 3. Check for standalone JSON object containing name and arguments
+    if let Some(start) = text.find('{') {
+        if let Some(end) = text.rfind('}') {
+            if end > start {
+                let candidate = &text[start..=end];
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(candidate) {
+                    if let Some(item) = extract_tool_call_from_value(&val) {
+                        let prefix = text[..start].trim().to_string();
+                        let content = if prefix.is_empty() { None } else { Some(prefix) };
+                        return (content, Some(vec![item]));
+                    }
+                }
+            }
+        }
+    }
+
+    (Some(text.to_string()), None)
+}
+
+fn extract_tool_call_from_value(val: &serde_json::Value) -> Option<ToolCallItem> {
+    let name = val.get("name").or_else(|| val.get("tool")).and_then(|n| n.as_str())?;
+    let arguments = if let Some(args) = val.get("arguments").or_else(|| val.get("params")) {
+        if args.is_string() {
+            args.as_str().unwrap().to_string()
+        } else {
+            serde_json::to_string(args).unwrap_or_else(|_| "{}".to_string())
+        }
+    } else {
+        "{}".to_string()
+    };
+
+    Some(ToolCallItem {
+        id: format!("call_{}", uuid::Uuid::new_v4()),
+        call_type: "function".to_string(),
+        function: ToolCallFunction {
+            name: name.to_string(),
+            arguments,
+        },
+    })
+}
+
+fn find_checkpoint_path() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("TINYLLAMA_MODEL_PATH") {
+        let path = PathBuf::from(p);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    let default_snap = PathBuf::from(
+        "/home/drakestapleton/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/model.safetensors",
+    );
+    if default_snap.exists() {
+        return Some(default_snap);
+    }
+
+    None
+}
+
+fn find_tokenizer_path() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("TINYLLAMA_TOKENIZER_PATH") {
+        let path = PathBuf::from(p);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    let default_snap = PathBuf::from(
+        "/home/drakestapleton/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json",
+    );
+    if default_snap.exists() {
+        return Some(default_snap);
+    }
+
+    let fixture = PathBuf::from("../aien-sovereign-core/crates/aien-inference-abi/fixtures/tokenizer.json");
+    if fixture.exists() {
+        return Some(fixture);
+    }
+
+    None
+}
+
+fn generate_sequence_id() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
     async fn test_generate_chat_offline_fail_closed() {
-        let engine = InferenceEngine::new(
+        let engine = HttpInferenceBackend::new(
             Some("http://127.0.0.1:9999/v1/chat/completions".to_string()),
             Some("atlas-lightning-omni".to_string()),
         );
@@ -258,7 +835,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_chat_with_tools_offline_fail_closed() {
-        let engine = InferenceEngine::new(
+        let engine = HttpInferenceBackend::new(
             Some("http://127.0.0.1:9999/v1/chat/completions".to_string()),
             Some("atlas-lightning-omni".to_string()),
         );
@@ -267,5 +844,80 @@ mod tests {
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert!(err.to_string().contains("Inference endpoint unreachable"));
+    }
+
+    #[test]
+    fn test_format_messages_to_prompt() {
+        let messages = vec![
+            json!({"role": "system", "content": "You are OpenClaw."}),
+            json!({"role": "user", "content": "Hello."}),
+        ];
+        let prompt = format_messages_to_prompt(&messages, None);
+        assert!(prompt.contains("<|system|>\nYou are OpenClaw.</s>"));
+        assert!(prompt.contains("<|user|>\nHello.</s>"));
+        assert!(prompt.ends_with("<|assistant|>\n"));
+    }
+
+    #[test]
+    fn test_parse_structured_tool_calls_json_block() {
+        let text = "Thinking about file...
+```json
+{
+  \"name\": \"read_file\",
+  \"arguments\": {\"path\": \"src/lib.rs\"}
+}
+```";
+        let (content, calls) = parse_structured_tool_calls(text);
+        assert_eq!(content.as_deref(), Some("Thinking about file..."));
+        assert!(calls.is_some());
+        let items = calls.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].function.name, "read_file");
+        assert!(items[0].function.arguments.contains("src/lib.rs"));
+    }
+
+    #[test]
+    fn test_parse_structured_tool_calls_tag() {
+        let text = "<tool_call>{\"name\": \"bash_eval\", \"arguments\": {\"command\": \"ls\"}}</tool_call>";
+        let (content, calls) = parse_structured_tool_calls(text);
+        assert!(content.is_none());
+        assert!(calls.is_some());
+        let items = calls.unwrap();
+        assert_eq!(items[0].function.name, "bash_eval");
+    }
+
+    #[test]
+    fn test_parse_structured_tool_calls_plain_response() {
+        let text = "All tasks completed successfully with zero defects.";
+        let (content, calls) = parse_structured_tool_calls(text);
+        assert_eq!(content.as_deref(), Some("All tasks completed successfully with zero defects."));
+        assert!(calls.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_embedded_inference_backend_reference_execution() {
+        let config = ModelConfig {
+            num_layers: 2,
+            num_heads: 4,
+            num_kv_heads: 2,
+            head_dim: 16,
+            hidden_dim: 64,
+            intermediate_dim: 128,
+            vocab_size: 256,
+            block_size: 16,
+            ..Default::default()
+        };
+
+        let backend = EmbeddedInferenceBackend::with_reference_weights(&config)
+            .expect("Reference backend should construct with available tokenizer");
+
+        assert_eq!(backend.endpoint(), "in-process://native-transformer");
+        assert!(backend.check_health().await);
+
+        let messages = vec![json!({"role": "user", "content": "ping"})];
+        let reply = backend.generate_chat(&messages, Some(0.0), Some(4)).await;
+        assert!(reply.is_ok(), "Embedded chat generation must succeed: {:?}", reply);
+        let text = reply.unwrap();
+        assert!(!text.is_empty(), "Generated text must not be empty");
     }
 }

@@ -37,14 +37,14 @@ pub struct AgentExecutionResult {
 
 #[derive(Clone)]
 pub struct AgentEngine {
-    inference: Arc<InferenceEngine>,
+    inference: Arc<dyn InferenceEngine>,
     skills: Arc<SkillRegistry>,
     db: Option<Arc<Database>>,
 }
 
 impl AgentEngine {
     pub fn new(
-        inference: Arc<InferenceEngine>,
+        inference: Arc<dyn InferenceEngine>,
         skills: Arc<SkillRegistry>,
         db: Option<Arc<Database>>,
     ) -> Self {
@@ -256,10 +256,11 @@ impl AgentEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::HttpInferenceBackend;
 
     #[tokio::test]
     async fn test_agent_engine_creation_and_skills() {
-        let inference = Arc::new(InferenceEngine::new(None, None));
+        let inference = Arc::new(HttpInferenceBackend::new(None, None));
         let skills = Arc::new(SkillRegistry::new());
         let agent = AgentEngine::new(inference, skills.clone(), None);
 
@@ -301,7 +302,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_tool_error_handling_and_recovery() {
-        let inference = Arc::new(InferenceEngine::new(
+        let inference = Arc::new(HttpInferenceBackend::new(
             Some("http://127.0.0.1:9999/v1/chat/completions".to_string()),
             None,
         ));
@@ -362,7 +363,7 @@ mod tests {
             let _ = axum::serve(listener, app).await;
         });
 
-        let inference = Arc::new(InferenceEngine::new(
+        let inference = Arc::new(HttpInferenceBackend::new(
             Some(format!("http://127.0.0.1:{}/v1/chat/completions", port)),
             None,
         ));

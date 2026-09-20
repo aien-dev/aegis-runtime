@@ -24,7 +24,7 @@ pub struct HeartbeatEngine {
     interval_secs: u64,
     tick_counter: AtomicU64,
     db: Arc<Database>,
-    inference: Option<Arc<InferenceEngine>>,
+    inference: Option<Arc<dyn InferenceEngine>>,
     is_running: Mutex<bool>,
     tx_pulse: broadcast::Sender<PulseReceipt>,
 }
@@ -45,7 +45,7 @@ impl HeartbeatEngine {
     pub fn with_inference(
         interval_secs: u64,
         db: Arc<Database>,
-        inference: Arc<InferenceEngine>,
+        inference: Arc<dyn InferenceEngine>,
     ) -> Self {
         let (tx, _) = broadcast::channel(128);
         Self {

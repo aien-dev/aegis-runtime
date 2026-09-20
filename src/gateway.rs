@@ -35,7 +35,7 @@ use crate::skills::{SkillExecutionRequest, SkillRegistry};
 pub struct GatewayState {
     pub start_time: Instant,
     pub db: Arc<Database>,
-    pub inference: Arc<InferenceEngine>,
+    pub inference: Arc<dyn InferenceEngine>,
     pub heartbeat: Arc<HeartbeatEngine>,
     pub skills: Arc<SkillRegistry>,
     pub agent: Arc<AgentEngine>,
@@ -668,11 +668,12 @@ pub async fn start_gateway(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::HttpInferenceBackend;
 
     #[tokio::test]
     async fn test_gateway_health_handler_unit() {
         let db = Arc::new(Database::open_in_memory().unwrap());
-        let inference = Arc::new(InferenceEngine::new(None, None));
+        let inference = Arc::new(HttpInferenceBackend::new(None, None));
         let heartbeat = Arc::new(HeartbeatEngine::new(60, db.clone()));
         let skills = Arc::new(SkillRegistry::new());
         let agent = Arc::new(AgentEngine::new(inference.clone(), skills.clone(), Some(db.clone())));
