@@ -384,30 +384,23 @@ pub struct ShellResponse {
 }
 
 pub async fn shell_handler(
+    State(state): State<GatewayState>,
     Json(payload): Json<ShellRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(&payload.command)
-        .output()
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to execute command: {}", e),
-            )
-        })?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let exit_code = output.status.code().unwrap_or(-1);
-
-    Ok(Json(ShellResponse {
-        stdout,
-        stderr,
-        exit_code,
-        success: output.status.success(),
-    }))
+    match state.skills.workspace().execute_shell(&payload.command, None, 15) {
+        Ok(stdout) => Ok(Json(ShellResponse {
+            stdout,
+            stderr: String::new(),
+            exit_code: 0,
+            success: true,
+        })),
+        Err(e) => Ok(Json(ShellResponse {
+            stdout: String::new(),
+            stderr: e.to_string(),
+            exit_code: 1,
+            success: false,
+        })),
+    }
 }
 
 // Task endpoints

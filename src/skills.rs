@@ -1,3 +1,4 @@
+use crate::security::WorkspaceCapability;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::Command;
@@ -28,6 +29,7 @@ pub type SkillHandler = Arc<dyn Fn(serde_json::Value) -> Result<String, String> 
 #[derive(Clone)]
 pub struct SkillRegistry {
     skills: Arc<RwLock<HashMap<String, (SkillDefinition, SkillHandler)>>>,
+    workspace: Arc<WorkspaceCapability>,
 }
 
 impl Default for SkillRegistry {
@@ -38,11 +40,20 @@ impl Default for SkillRegistry {
 
 impl SkillRegistry {
     pub fn new() -> Self {
+        Self::with_workspace(WorkspaceCapability::detect())
+    }
+
+    pub fn with_workspace(workspace: WorkspaceCapability) -> Self {
         let registry = Self {
             skills: Arc::new(RwLock::new(HashMap::new())),
+            workspace: Arc::new(workspace),
         };
         registry.register_builtin_skills();
         registry
+    }
+
+    pub fn workspace(&self) -> &WorkspaceCapability {
+        &self.workspace
     }
 
     pub fn register<F>(&self, def: SkillDefinition, handler: F)
@@ -108,142 +119,91 @@ impl SkillRegistry {
 
     fn register_builtin_skills(&self) {
         // Builtin 1: bash_eval
-        let home_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let default_workspace = std::env::var("OPENCLAW_WORKSPACE")
-            .unwrap_or_else(|_| format!("{}/workspace", home_dir));
-
+        let ws_bash = self.workspace.clone();
         let bash_def = SkillDefinition {
             name: "bash_eval".to_string(),
             description: format!(
-                "Execute a command in the local bash shell. Working directory defaults to {}. Timeout is 15 seconds. Broad scans of root (find /) are prohibited.",
-                default_workspace
+                "Execute a command in the local bash shell strictly within authorized workspace root {}. Execution is confined by workspace capability.",
+                ws_bash.root().display()
             ),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "command": { "type": "string", "description": "The command line string to run" },
-                    "cwd": { "type": "string", "description": format!("Optional working directory, defaults to {}", default_workspace) }
+                    "cwd": { "type": "string", "description": format!("Optional working directory inside authorized workspace {}", ws_bash.root().display()) }
                 },
                 "required": ["command"]
             }),
         };
-        let default_ws_clone = default_workspace.clone();
-        let home_clone = home_dir.clone();
         self.register(bash_def, move |args| {
             let cmd = args.get("command").and_then(|c| c.as_str()).unwrap_or("");
-            if cmd.is_empty() {
-                return Err("Command cannot be empty".to_string());
-            }
-
-            let trimmed = cmd.trim();
-            if trimmed.contains("find / ") || trimmed.contains("find / -") || trimmed == "find /" || trimmed.starts_with("rm -rf /") {
-                return Err(format!(
-                    "Safety error: broad scans of root filesystem (find /) are prohibited. Target specific workspace paths under {}.",
-                    default_ws_clone
-                ));
-            }
-
             let cwd = args.get("cwd").and_then(|c| c.as_str());
-
-            let target_dir = match cwd {
-                Some(dir) if std::path::Path::new(dir).exists() => dir.to_string(),
-                Some(dir) => return Err(format!("Specified working directory does not exist: {}", dir)),
-                None => {
-                    if std::path::Path::new(&default_ws_clone).exists() {
-                        default_ws_clone.clone()
-                    } else if std::path::Path::new(&home_clone).exists() {
-                        home_clone.clone()
-                    } else {
-                        ".".to_string()
-                    }
-                }
-            };
-
-            let escaped_cmd = cmd.replace('\'', "'\\''");
-            let wrapped_cmd = format!("timeout 15s bash -c '{}'", escaped_cmd);
-            let output = Command::new("sh")
-                .arg("-c")
-                .arg(&wrapped_cmd)
-                .current_dir(&target_dir)
-                .output()
-                .map_err(|e| format!("Failed to execute command: {}", e))?;
-
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            if !output.status.success() {
-                let code = output.status.code().unwrap_or(-1);
-                if code == 124 {
-                    return Err(format!("Command timed out after 15 seconds: {}", cmd));
-                }
-                return Err(format!("Exit code {}: {}", code, stderr));
-            }
-            Ok(stdout)
+            ws_bash.execute_shell(cmd, cwd, 15).map_err(|e| e.to_string())
         });
 
         // Builtin 2: read_file
+        let ws_read = self.workspace.clone();
         let read_def = SkillDefinition {
             name: "read_file".to_string(),
-            description: "Read the contents of a text file from the filesystem".to_string(),
+            description: "Read the contents of a text file strictly within authorized workspace roots".to_string(),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "path": { "type": "string", "description": "Absolute or relative path to file" }
+                    "path": { "type": "string", "description": "Relative or absolute path inside the workspace root" }
                 },
                 "required": ["path"]
             }),
         };
-        self.register(read_def, |args| {
+        self.register(read_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str()).unwrap_or("");
-            if path_str.is_empty() {
-                return Err("Path cannot be empty".to_string());
-            }
-            std::fs::read_to_string(path_str)
-                .map_err(|e| format!("Failed to read file {}: {}", path_str, e))
+            let resolved = ws_read.resolve_read_path(path_str).map_err(|e| e.to_string())?;
+            std::fs::read_to_string(&resolved)
+                .map_err(|e| format!("Failed to read file {}: {}", resolved.display(), e))
         });
 
         // Builtin 3: write_file
+        let ws_write = self.workspace.clone();
         let write_def = SkillDefinition {
             name: "write_file".to_string(),
-            description: "Write text contents to a file on the filesystem".to_string(),
+            description: "Write text contents to a file strictly within authorized workspace roots".to_string(),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "path": { "type": "string", "description": "File path to write" },
+                    "path": { "type": "string", "description": "Target file path inside the workspace root" },
                     "content": { "type": "string", "description": "Text content to write" }
                 },
                 "required": ["path", "content"]
             }),
         };
-        self.register(write_def, |args| {
+        self.register(write_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str()).unwrap_or("");
             let content = args.get("content").and_then(|c| c.as_str()).unwrap_or("");
-            if path_str.is_empty() {
-                return Err("Path cannot be empty".to_string());
-            }
-            if let Some(parent) = std::path::Path::new(path_str).parent() {
+            let resolved = ws_write.resolve_write_path(path_str).map_err(|e| e.to_string())?;
+            if let Some(parent) = resolved.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            std::fs::write(path_str, content)
-                .map(|_| format!("Wrote {} bytes to {}", content.len(), path_str))
-                .map_err(|e| format!("Failed to write file {}: {}", path_str, e))
+            std::fs::write(&resolved, content)
+                .map(|_| format!("Wrote {} bytes to {}", content.len(), resolved.display()))
+                .map_err(|e| format!("Failed to write file {}: {}", resolved.display(), e))
         });
 
         // Builtin 4: list_dir
+        let ws_list = self.workspace.clone();
         let list_def = SkillDefinition {
             name: "list_dir".to_string(),
-            description: "List directory contents including files and subdirectories".to_string(),
+            description: "List directory contents strictly within authorized workspace roots".to_string(),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "path": { "type": "string", "description": "Directory path to list" }
-                },
-                "required": ["path"]
+                    "path": { "type": "string", "description": "Directory path inside workspace root" }
+                }
             }),
         };
-        self.register(list_def, |args| {
-            let path_str = args.get("path").and_then(|p| p.as_str()).unwrap_or(".");
-            let entries = std::fs::read_dir(path_str)
-                .map_err(|e| format!("Failed to read directory {}: {}", path_str, e))?;
+        self.register(list_def, move |args| {
+            let path_str = args.get("path").and_then(|p| p.as_str());
+            let resolved = ws_list.resolve_dir_path(path_str).map_err(|e| e.to_string())?;
+            let entries = std::fs::read_dir(&resolved)
+                .map_err(|e| format!("Failed to read directory {}: {}", resolved.display(), e))?;
             let mut items = Vec::new();
             for entry in entries.flatten() {
                 let fname = entry.file_name().to_string_lossy().to_string();
@@ -255,28 +215,30 @@ impl SkillRegistry {
         });
 
         // Builtin 5: git_status
+        let ws_git = self.workspace.clone();
         let git_def = SkillDefinition {
             name: "git_status".to_string(),
-            description: "Check git status and current commit in repository".to_string(),
+            description: "Check git status and commit in repository strictly within authorized workspace root".to_string(),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "path": { "type": "string", "description": "Repository path" }
+                    "path": { "type": "string", "description": "Repository path inside workspace root" }
                 }
             }),
         };
-        self.register(git_def, |args| {
-            let path_str = args.get("path").and_then(|p| p.as_str()).unwrap_or(".");
+        self.register(git_def, move |args| {
+            let path_str = args.get("path").and_then(|p| p.as_str());
+            let resolved = ws_git.resolve_dir_path(path_str).map_err(|e| e.to_string())?;
             let output = Command::new("git")
                 .arg("-C")
-                .arg(path_str)
+                .arg(&resolved)
                 .arg("status")
                 .arg("--short")
                 .output()
                 .map_err(|e| format!("Failed to run git status: {}", e))?;
             let log_output = Command::new("git")
                 .arg("-C")
-                .arg(path_str)
+                .arg(&resolved)
                 .arg("log")
                 .arg("-1")
                 .arg("--oneline")
@@ -346,16 +308,15 @@ mod tests {
     }
 
     #[test]
-    fn test_filesystem_skills() {
-        let registry = SkillRegistry::new();
+    fn test_filesystem_skills_with_workspace_containment() {
         let tmp = tempfile::tempdir().unwrap();
-        let fpath = tmp.path().join("test_write.txt");
-        let fpath_str = fpath.to_str().unwrap();
+        let cap = WorkspaceCapability::new(tmp.path()).unwrap();
+        let registry = SkillRegistry::with_workspace(cap);
 
         let w_req = SkillExecutionRequest {
             skill_name: "write_file".to_string(),
             arguments: serde_json::json!({
-                "path": fpath_str,
+                "path": "test_write.txt",
                 "content": "Sovereign native AIEN test content"
             }),
         };
@@ -365,7 +326,7 @@ mod tests {
         let r_req = SkillExecutionRequest {
             skill_name: "read_file".to_string(),
             arguments: serde_json::json!({
-                "path": fpath_str,
+                "path": "test_write.txt",
             }),
         };
         let r_res = registry.execute(&r_req);
@@ -375,11 +336,22 @@ mod tests {
         let l_req = SkillExecutionRequest {
             skill_name: "list_dir".to_string(),
             arguments: serde_json::json!({
-                "path": tmp.path().to_str().unwrap(),
+                "path": ".",
             }),
         };
         let l_res = registry.execute(&l_req);
         assert!(l_res.success);
         assert!(l_res.output.contains("test_write.txt"));
+
+        // Test security escape rejection
+        let escape_req = SkillExecutionRequest {
+            skill_name: "read_file".to_string(),
+            arguments: serde_json::json!({
+                "path": "../../etc/passwd",
+            }),
+        };
+        let escape_res = registry.execute(&escape_req);
+        assert!(!escape_res.success);
+        assert!(escape_res.error.unwrap().contains("Security rejection"));
     }
 }

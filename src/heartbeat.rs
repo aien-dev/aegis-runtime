@@ -9,6 +9,7 @@ use tracing::info;
 
 use crate::inference::InferenceEngine;
 use crate::persistence::Database;
+use crate::security::WorkspaceCapability;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PulseReceipt {
@@ -25,6 +26,7 @@ pub struct HeartbeatEngine {
     tick_counter: AtomicU64,
     db: Arc<Database>,
     inference: Option<Arc<dyn InferenceEngine>>,
+    workspace: Arc<WorkspaceCapability>,
     is_running: Mutex<bool>,
     tx_pulse: broadcast::Sender<PulseReceipt>,
 }
@@ -37,6 +39,7 @@ impl HeartbeatEngine {
             tick_counter: AtomicU64::new(0),
             db,
             inference: None,
+            workspace: Arc::new(WorkspaceCapability::detect()),
             is_running: Mutex::new(false),
             tx_pulse: tx,
         }
@@ -53,6 +56,7 @@ impl HeartbeatEngine {
             tick_counter: AtomicU64::new(0),
             db,
             inference: Some(inference),
+            workspace: Arc::new(WorkspaceCapability::detect()),
             is_running: Mutex::new(false),
             tx_pulse: tx,
         }
@@ -66,29 +70,42 @@ impl HeartbeatEngine {
         self.tick_counter.load(Ordering::Relaxed)
     }
 
+    pub fn with_workspace(
+        interval_secs: u64,
+        db: Arc<Database>,
+        workspace: WorkspaceCapability,
+    ) -> Self {
+        let (tx, _) = broadcast::channel(128);
+        Self {
+            interval_secs,
+            tick_counter: AtomicU64::new(0),
+            db,
+            inference: None,
+            workspace: Arc::new(workspace),
+            is_running: Mutex::new(false),
+            tx_pulse: tx,
+        }
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<PulseReceipt> {
         self.tx_pulse.subscribe()
     }
 
     pub async fn pulse_once(&self) -> PulseReceipt {
-        let tick = self.tick_counter.fetch_add(1, Ordering::Relaxed) + 1;
+        let tick = self.tick_counter.fetch_add(1, Ordering::SeqCst) + 1;
         let now = Utc::now().to_rfc3339();
 
-        let pending = self.db.list_pending_tasks().unwrap_or_default();
-        let tasks_count = pending.len();
+        let pending_tasks = self.db.list_pending_tasks().unwrap_or_default();
+        let tasks_count = pending_tasks.len();
         let mut actions = 0;
 
-        for task in pending {
+        for task in pending_tasks {
             match task.task_type.as_str() {
                 "max_health" => {
                     let is_healthy = if let Some(ref inf) = self.inference {
                         inf.check_health().await
                     } else {
-                        let client = reqwest::Client::builder()
-                            .timeout(Duration::from_secs(2))
-                            .build()
-                            .unwrap_or_default();
-                        client
+                        reqwest::Client::new()
                             .get("http://127.0.0.1:18006/v1/models")
                             .send()
                             .await
@@ -111,46 +128,8 @@ impl HeartbeatEngine {
                         &task.payload
                     };
 
-                    let trimmed = cmd_to_run.trim();
-                    if trimmed.contains("find / ") || trimmed.contains("find / -") || trimmed == "find /" || trimmed.starts_with("rm -rf /") {
-                        let res_text = "Security rejection: broad root scan or destructive command prohibited";
-                        let _ = self.db.complete_task(&task.id, res_text);
-                        actions += 1;
-                        continue;
-                    }
-
-                    let home_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-                    let workspace_root = std::env::var("OPENCLAW_WORKSPACE")
-                        .unwrap_or_else(|_| format!("{}/workspace", home_dir));
-                    let target_dir = if std::path::Path::new(&workspace_root).exists() {
-                        std::path::PathBuf::from(workspace_root)
-                    } else if let Ok(cwd) = std::env::current_dir() {
-                        cwd
-                    } else {
-                        std::path::PathBuf::from(".")
-                    };
-
-                    let output = Command::new("sh")
-                        .arg("-c")
-                        .arg(cmd_to_run)
-                        .current_dir(&target_dir)
-                        .output()
-                        .await;
-
-                    let res_text = match output {
-                        Ok(o) => {
-                            let stdout = String::from_utf8_lossy(&o.stdout);
-                            let stderr = String::from_utf8_lossy(&o.stderr);
-                            format!(
-                                "Exit code {}: {}",
-                                o.status.code().unwrap_or(-1),
-                                if !stdout.trim().is_empty() {
-                                    stdout.trim()
-                                } else {
-                                    stderr.trim()
-                                }
-                            )
-                        }
+                    let res_text = match self.workspace.execute_shell(cmd_to_run, None, 15) {
+                        Ok(stdout) => format!("Exit code 0: {}", stdout.trim()),
                         Err(e) => format!("Execution failure: {}", e),
                     };
                     let _ = self.db.complete_task(&task.id, &res_text);
@@ -285,7 +264,7 @@ mod tests {
     #[tokio::test]
     async fn test_heartbeat_prohibited_root_command_rejection() {
         let db = Arc::new(Database::open_in_memory().unwrap());
-        db.create_task("hb_sec", "shell_exec", "find / -name secret").unwrap();
+        db.create_task("hb_sec", "shell_exec", "cd /etc && ls").unwrap();
 
         let engine = HeartbeatEngine::new(60, db.clone());
         let receipt = engine.pulse_once().await;
