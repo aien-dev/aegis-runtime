@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use openclaw::{
-    start_gateway, AgentEngine, Database, GatewayState, HeartbeatEngine, InferenceEngine,
-    MojoSimdBridge, SkillRegistry,
+    start_gateway, AgentEngine, Database, EmbeddedInferenceBackend, GatewayState,
+    HeartbeatEngine, HttpInferenceBackend, InferenceEngine, MojoSimdBridge, SkillRegistry,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use tracing_subscriber::FmtSubscriber;
 #[derive(Parser)]
 #[command(name = "openclaw")]
 #[command(version = "0.2.0")]
-#[command(about = "Native sovereign agent runtime in Rust, Mojo, and Modular MAX", long_about = None)]
+#[command(about = "Native sovereign agent runtime in Rust, Mojo, and NativeTransformer", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -24,8 +24,14 @@ enum Commands {
     Serve {
         #[arg(short, long, default_value = "18096")]
         port: u16,
+        #[arg(long, default_value = "embedded")]
+        inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
         max_url: String,
+        #[arg(long)]
+        model_path: Option<String>,
+        #[arg(long)]
+        tokenizer_path: Option<String>,
         #[arg(long, default_value = "openclaw.sqlite")]
         db_path: String,
         #[arg(long, default_value = "60")]
@@ -38,24 +44,42 @@ enum Commands {
     },
     /// Run persistent background heartbeat daemon loop
     Heartbeat {
+        #[arg(long, default_value = "embedded")]
+        inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
         max_url: String,
+        #[arg(long)]
+        model_path: Option<String>,
+        #[arg(long)]
+        tokenizer_path: Option<String>,
         #[arg(long, default_value = "openclaw.sqlite")]
         db_path: String,
         #[arg(long, default_value = "30")]
         heartbeat_secs: u64,
     },
-    /// Send a direct prompt to local Modular MAX inference engine
+    /// Send a direct prompt to the inference engine
     Ask {
         prompt: String,
+        #[arg(long, default_value = "embedded")]
+        inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
         max_url: String,
+        #[arg(long)]
+        model_path: Option<String>,
+        #[arg(long)]
+        tokenizer_path: Option<String>,
     },
     /// Execute an autonomous agent task with multi-turn tool calling
     Agent {
         prompt: String,
+        #[arg(long, default_value = "embedded")]
+        inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
         max_url: String,
+        #[arg(long)]
+        model_path: Option<String>,
+        #[arg(long)]
+        tokenizer_path: Option<String>,
         #[arg(long, default_value = "openclaw.sqlite")]
         db_path: String,
         #[arg(long, default_value = "8")]
@@ -68,11 +92,35 @@ enum Commands {
     },
     /// Display runtime status and system health
     Status {
+        #[arg(long, default_value = "embedded")]
+        inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
         max_url: String,
+        #[arg(long)]
+        model_path: Option<String>,
+        #[arg(long)]
+        tokenizer_path: Option<String>,
         #[arg(long, default_value = "openclaw.sqlite")]
         db_path: String,
     },
+}
+
+fn resolve_inference_engine(
+    mode: &str,
+    max_url: &str,
+    model_path: Option<&str>,
+    tokenizer_path: Option<&str>,
+) -> Result<Arc<dyn InferenceEngine>, Box<dyn std::error::Error>> {
+    if mode == "http" {
+        info!("Binding OpenClaw to external HTTP inference daemon at {}", max_url);
+        Ok(Arc::new(HttpInferenceBackend::new(Some(max_url.to_string()), None)))
+    } else {
+        info!("Binding OpenClaw to in-process EmbeddedInferenceBackend (NativeTransformerBackend)...");
+        let backend = EmbeddedInferenceBackend::load_or_fallback(model_path, tokenizer_path)
+            .map_err(|e| anyhow::anyhow!(e))?;
+        info!("In-process embedded inference backend active: {}", backend.model_id());
+        Ok(Arc::new(backend))
+    }
 }
 
 #[tokio::main]
@@ -86,19 +134,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command.unwrap_or(Commands::Serve {
         port: 18096,
+        inference: "embedded".to_string(),
         max_url: "http://127.0.0.1:18006/v1/chat/completions".to_string(),
+        model_path: None,
+        tokenizer_path: None,
         db_path: "openclaw.sqlite".to_string(),
         heartbeat_secs: 60,
     }) {
         Commands::Serve {
             port,
+            inference: inference_mode,
             max_url,
+            model_path,
+            tokenizer_path,
             db_path,
             heartbeat_secs,
         } => {
             info!("Initializing OpenClaw engine on Grace Blackwell GB10...");
             let db = Arc::new(Database::open(Path::new(&db_path))?);
-            let inference = Arc::new(InferenceEngine::new(Some(max_url), None));
+            let inference = resolve_inference_engine(
+                &inference_mode,
+                &max_url,
+                model_path.as_deref(),
+                tokenizer_path.as_deref(),
+            )?;
             let heartbeat = Arc::new(HeartbeatEngine::with_inference(
                 heartbeat_secs,
                 db.clone(),
@@ -133,13 +192,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Heartbeat tick completed successfully: {:?}", receipt.notes);
         }
         Commands::Heartbeat {
+            inference: inference_mode,
             max_url,
+            model_path,
+            tokenizer_path,
             db_path,
             heartbeat_secs,
         } => {
             info!("Initializing OpenClaw persistent heartbeat daemon on Grace Blackwell GB10...");
             let db = Arc::new(Database::open(Path::new(&db_path))?);
-            let inference = Arc::new(InferenceEngine::new(Some(max_url), None));
+            let inference = resolve_inference_engine(
+                &inference_mode,
+                &max_url,
+                model_path.as_deref(),
+                tokenizer_path.as_deref(),
+            )?;
             let heartbeat = Arc::new(HeartbeatEngine::with_inference(
                 heartbeat_secs,
                 db.clone(),
@@ -160,9 +227,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
         }
-        Commands::Ask { prompt, max_url } => {
-            let inference = InferenceEngine::new(Some(max_url), None);
-            println!("Dispatching query to Modular MAX: {}", prompt);
+        Commands::Ask {
+            prompt,
+            inference: inference_mode,
+            max_url,
+            model_path,
+            tokenizer_path,
+        } => {
+            let inference = resolve_inference_engine(
+                &inference_mode,
+                &max_url,
+                model_path.as_deref(),
+                tokenizer_path.as_deref(),
+            )?;
+            println!("Dispatching query to inference engine ({}): {}", inference.model_id(), prompt);
             match inference.generate(&prompt, None, None).await {
                 Ok(reply) => println!("\n{}", reply),
                 Err(err) => eprintln!("Inference error: {}", err),
@@ -170,18 +248,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Agent {
             prompt,
+            inference: inference_mode,
             max_url,
+            model_path,
+            tokenizer_path,
             db_path,
             max_turns,
         } => {
             println!("=== OpenClaw Sovereign Agent Execution ===");
             println!("Task Goal: {}", prompt);
-            println!("Target Engine: Modular MAX on Grace Blackwell GB10");
-            println!("MAX Endpoint: {}", max_url);
+            let inference = resolve_inference_engine(
+                &inference_mode,
+                &max_url,
+                model_path.as_deref(),
+                tokenizer_path.as_deref(),
+            )?;
+            println!("Target Engine: {}", inference.model_id());
+            println!("Endpoint: {}", inference.endpoint());
             println!("------------------------------------------------------------");
 
             let db = Arc::new(Database::open(Path::new(&db_path))?);
-            let inference = Arc::new(InferenceEngine::new(Some(max_url), None));
             let skills = Arc::new(SkillRegistry::new());
             let agent = AgentEngine::new(inference, skills, Some(db));
 
@@ -243,18 +329,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 MojoSimdBridge::token_projection([1.0, 2.0, 3.0, 4.0], [0.5, 0.5, 0.5, 0.5], 1.0);
             println!("Token Projection: {:.6}", proj);
         }
-        Commands::Status { max_url, db_path } => {
+        Commands::Status {
+            inference: inference_mode,
+            max_url,
+            model_path,
+            tokenizer_path,
+            db_path,
+        } => {
             println!("=== OpenClaw Sovereign Runtime Status ===");
-            println!("Architecture: Pure native Rust + Mojo 1.1 + Modular MAX");
+            println!("Architecture: Pure native Rust + Mojo 1.1 + In-Process NativeTransformer");
             println!("Hardware Target: Grace Blackwell GB10 (aarch64-unknown-linux-gnu)");
             println!("Database: SQLite WAL ({})", db_path);
-            println!("MAX Endpoint: {}", max_url);
-            let inference = InferenceEngine::new(Some(max_url), None);
+            let inference = resolve_inference_engine(
+                &inference_mode,
+                &max_url,
+                model_path.as_deref(),
+                tokenizer_path.as_deref(),
+            )?;
+            println!("Inference Backend: {}", inference.model_id());
+            println!("Inference Endpoint: {}", inference.endpoint());
             let healthy = inference.check_health().await;
             println!(
-                "MAX Engine Status: {}",
+                "Inference Engine Status: {}",
                 if healthy {
-                    "ONLINE (GB10 Local)"
+                    "ONLINE"
                 } else {
                     "OFFLINE (Fallback Active)"
                 }

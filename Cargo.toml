@@ -27,6 +27,9 @@ libloading = "0.8"
 anyhow = "1.0.104"
 aien-inference-abi = { path = "../aien-sovereign-core/crates/aien-inference-abi" }
 aien-kv-cache = { path = "../aien-sovereign-core/crates/aien-kv-cache" }
+aien-scheduler = { path = "../aien-sovereign-core/crates/aien-scheduler" }
+async-trait = "0.1"
+parking_lot = "0.12"
 
 
 [dev-dependencies]

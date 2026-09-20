@@ -4,7 +4,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use openclaw::{
-    create_router, AgentEngine, Database, GatewayState, HeartbeatEngine, InferenceEngine,
+    create_router, AgentEngine, Database, GatewayState, HeartbeatEngine, HttpInferenceBackend,
     MojoSimdBridge, SkillRegistry, VaultResolver, REDACTED_MARKER,
 };
 use serde_json::Value;
@@ -82,7 +82,7 @@ async fn spawn_mock_inference_server() -> String {
 async fn create_test_state() -> GatewayState {
     let mock_endpoint = spawn_mock_inference_server().await;
     let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(InferenceEngine::new(
+    let inference = Arc::new(HttpInferenceBackend::new(
         Some(mock_endpoint),
         None,
     ));
@@ -844,7 +844,7 @@ async fn test_gateway_submillisecond_health_latency_benchmark() {
 async fn test_agent_multiturn_accumulation_and_error_recovery() {
     let mock_url = spawn_mock_inference_server().await;
     let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(InferenceEngine::new(
+    let inference = Arc::new(HttpInferenceBackend::new(
         Some(mock_url),
         None,
     ));
@@ -971,7 +971,7 @@ fn test_mojo_simd_mathematical_invariants_and_edge_cases() {
 #[tokio::test]
 async fn test_gateway_offline_inference_fail_closed() {
     let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(InferenceEngine::new(
+    let inference = Arc::new(HttpInferenceBackend::new(
         Some("http://127.0.0.1:9999/v1/chat/completions".to_string()),
         None,
     ));
@@ -1026,7 +1026,7 @@ async fn test_gateway_offline_inference_fail_closed() {
 #[tokio::test]
 async fn test_agent_offline_inference_fail_closed() {
     let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(InferenceEngine::new(
+    let inference = Arc::new(HttpInferenceBackend::new(
         Some("http://127.0.0.1:9999/v1/chat/completions".to_string()),
         None,
     ));
