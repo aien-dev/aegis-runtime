@@ -551,13 +551,12 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
                             }
                             "shell" => {
                                 let cmd_str = parsed.get("command").and_then(|v| v.as_str()).unwrap_or("echo shell ready");
-                                let res = Command::new("sh").arg("-c").arg(cmd_str).output().await;
-                                let out = match res {
-                                    Ok(o) => json!({
+                                let out = match state.skills.workspace().execute_shell(cmd_str, None, 15) {
+                                    Ok(stdout) => json!({
                                         "type": "shell_output",
-                                        "stdout": String::from_utf8_lossy(&o.stdout),
-                                        "stderr": String::from_utf8_lossy(&o.stderr),
-                                        "exit_code": o.status.code().unwrap_or(-1),
+                                        "stdout": stdout,
+                                        "stderr": "",
+                                        "exit_code": 0,
                                     }),
                                     Err(e) => json!({
                                         "type": "shell_error",
