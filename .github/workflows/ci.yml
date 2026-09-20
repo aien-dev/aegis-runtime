@@ -1,6 +1,6 @@
 name: Sovereign CI
 
-on:
+"on":
   push:
     branches: [main]
   pull_request:
@@ -15,19 +15,30 @@ jobs:
     name: Test & Invariant Verification
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout OpenClaw
         uses: actions/checkout@v4
+        with:
+          path: openclaw-rs
 
-      - name: Install Rust toolchain
+      - name: Checkout AIEN Sovereign Core Dependencies
+        uses: actions/checkout@v4
+        with:
+          repository: aien-dev/aien-sovereign-core
+          path: aien-sovereign-core
+
+      - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
       - name: Verify Code Formatting
+        working-directory: openclaw-rs
         run: cargo fmt --all -- --check
 
       - name: Cargo Check
+        working-directory: openclaw-rs
         run: cargo check --all-targets
 
       - name: Run Tests
+        working-directory: openclaw-rs
         run: cargo test --verbose

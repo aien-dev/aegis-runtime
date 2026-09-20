@@ -14,16 +14,26 @@ jobs:
     name: Build Linux x86_64
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Source
+      - name: Checkout OpenClaw
         uses: actions/checkout@v4
+        with:
+          path: openclaw-rs
+
+      - name: Checkout AIEN Sovereign Core Dependencies
+        uses: actions/checkout@v4
+        with:
+          repository: aien-dev/aien-sovereign-core
+          path: aien-sovereign-core
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Binary
+        working-directory: openclaw-rs
         run: cargo build --release
 
       - name: Package Binary
+        working-directory: openclaw-rs
         run: |
           mkdir -p dist
           cp target/release/openclaw dist/openclaw
@@ -35,7 +45,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: openclaw-linux-x86_64
-          path: openclaw-linux-x86_64.*
+          path: openclaw-rs/openclaw-linux-x86_64.*
 
   publish-release:
     name: Publish Release and Checksums
