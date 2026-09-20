@@ -234,8 +234,7 @@ pub async fn openai_completions_handler(
             .stream_chat(&messages_json, payload.temperature, payload.max_tokens)
             .await
         {
-            Ok(res) => {
-                let stream = res.bytes_stream();
+            Ok(stream) => {
                 let body = Body::from_stream(stream);
                 Response::builder()
                     .header(header::CONTENT_TYPE, "text/event-stream")
