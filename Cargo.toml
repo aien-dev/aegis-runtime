@@ -30,6 +30,7 @@ aien-kv-cache = { path = "../aien-sovereign-core/crates/aien-kv-cache" }
 aien-scheduler = { path = "../aien-sovereign-core/crates/aien-scheduler" }
 async-trait = "0.1"
 parking_lot = "0.12"
+bytes = "1.6"
 
 
 [dev-dependencies]

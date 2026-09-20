@@ -12,7 +12,11 @@ use aien_kv_cache::SharedKvManager;
 use aien_scheduler::AienScheduler;
 use async_trait::async_trait;
 use parking_lot::{Mutex, RwLock};
-use reqwest::{Client, Response};
+use futures_util::StreamExt;
+use reqwest::Client;
+use std::pin::Pin;
+
+pub type ChatStream = Pin<Box<dyn futures_util::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send>>;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -123,15 +127,13 @@ pub trait InferenceEngine: Send + Sync {
         max_tokens: Option<u32>,
     ) -> Result<ChatTurnResponse, Box<dyn std::error::Error + Send + Sync>>;
 
-    /// Streams chat completions over HTTP (supported on HTTP backend).
+    /// Streams chat completions as raw SSE event bytes.
     async fn stream_chat(
         &self,
-        _messages: &[serde_json::Value],
-        _temperature: Option<f32>,
-        _max_tokens: Option<u32>,
-    ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-        Err(anyhow::anyhow!("Streaming is not supported on embedded inference backend").into())
-    }
+        messages: &[serde_json::Value],
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<ChatStream, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Validates inference engine availability and readiness.
     async fn check_health(&self) -> bool;
@@ -286,7 +288,7 @@ impl InferenceEngine for HttpInferenceBackend {
         messages: &[serde_json::Value],
         temperature: Option<f32>,
         max_tokens: Option<u32>,
-    ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<ChatStream, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
             "model": self.model_id,
             "messages": messages,
@@ -296,7 +298,16 @@ impl InferenceEngine for HttpInferenceBackend {
         });
 
         let res = self.client.post(&self.endpoint).json(&body).send().await?;
-        Ok(res)
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("MAX streaming error {}: {}", status, text).into());
+        }
+
+        let stream = res.bytes_stream().map(|item| {
+            item.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        });
+        Ok(Box::pin(stream))
     }
 
     async fn check_health(&self) -> bool {
@@ -425,6 +436,42 @@ impl EmbeddedModel {
             warn!("Real model checkpoint not found on disk, using reference test weights");
             Self::with_reference_weights(&ModelConfig::tinyllama_1_1b())
         }
+    }
+
+    /// Generates text completion streaming token text pieces via a callback.
+    pub fn generate_stream<F>(
+        &mut self,
+        prompt: &str,
+        max_tokens: usize,
+        temperature: f32,
+        mut on_token: F,
+    ) -> Result<(), String>
+    where
+        F: FnMut(&str) -> bool,
+    {
+        let prompt_tokens = self.tokenizer.encode(prompt)
+            .map_err(|e| format!("Encoding failed: {}", e))?;
+
+        let seq_id = generate_sequence_id();
+        let stop_tokens = [
+            TinyLlamaTokenizer::EOS_TOKEN_ID,
+            TinyLlamaTokenizer::UNK_TOKEN_ID,
+        ];
+
+        self.transformer.generate_tokens_streaming(
+            seq_id,
+            &prompt_tokens,
+            max_tokens,
+            temperature,
+            &stop_tokens,
+            |tok| {
+                if let Ok(piece) = self.tokenizer.decode(&[tok]) {
+                    on_token(&piece)
+                } else {
+                    true
+                }
+            },
+        )
     }
 
     /// Generates text completion from raw prompt string.
@@ -617,6 +664,71 @@ impl InferenceEngine for EmbeddedInferenceBackend {
         .map_err(|e| anyhow::anyhow!("Embedded inference error: {}", e))?;
 
         Ok(result)
+    }
+
+    async fn stream_chat(
+        &self,
+        messages: &[serde_json::Value],
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<ChatStream, Box<dyn std::error::Error + Send + Sync>> {
+        let model = self.model.clone();
+        let prompt_str = format_messages_to_prompt(messages, None);
+        let max_toks = max_tokens.unwrap_or(256) as usize;
+        let temp = temperature.unwrap_or(0.0);
+        let model_id = self.model_id.clone();
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<bytes::Bytes, std::io::Error>>(32);
+
+        tokio::task::spawn_blocking(move || {
+            let chunk_id = format!("chatcmpl-{}", uuid::Uuid::new_v4());
+            let created = chrono::Utc::now().timestamp();
+            let mut guard = model.lock();
+
+            let gen_res = guard.generate_stream(&prompt_str, max_toks, temp, |delta| {
+                let chunk_json = json!({
+                    "id": &chunk_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": &model_id,
+                    "choices": [{
+                        "index": 0,
+                        "delta": { "content": delta },
+                        "finish_reason": null
+                    }]
+                });
+                let payload = format!("data: {}
+
+", chunk_json);
+                tx.blocking_send(Ok(bytes::Bytes::from(payload))).is_ok()
+            });
+
+            if let Err(e) = gen_res {
+                let _ = tx.blocking_send(Err(std::io::Error::new(std::io::ErrorKind::Other, e)));
+                return;
+            }
+
+            let term_chunk = json!({
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop"
+                }]
+            });
+            let term_payload = format!("data: {}
+
+data: [DONE]
+
+", term_chunk);
+            let _ = tx.blocking_send(Ok(bytes::Bytes::from(term_payload)));
+        });
+
+        let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        Ok(Box::pin(stream))
     }
 
     async fn check_health(&self) -> bool {

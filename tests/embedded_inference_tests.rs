@@ -14,6 +14,7 @@ use openclaw::inference::{
 };
 use openclaw::{AgentEngine, SkillExecutionRequest, SkillRegistry};
 use serde_json::json;
+use futures_util::StreamExt;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -182,4 +183,119 @@ async fn test_real_model_embedded_execution_if_present() {
     assert!(res.is_ok(), "Generation must succeed: {:?}", res.err());
     let text = res.unwrap();
     println!("Generated text preview: {}", text);
+}
+
+#[tokio::test]
+async fn test_embedded_inference_chat_streaming() {
+    let config = ModelConfig {
+        num_layers: 2,
+        num_heads: 4,
+        num_kv_heads: 2,
+        head_dim: 16,
+        hidden_dim: 64,
+        intermediate_dim: 128,
+        vocab_size: 256,
+        block_size: 16,
+        ..Default::default()
+    };
+
+    let backend = EmbeddedInferenceBackend::with_reference_weights(&config).unwrap();
+    let messages = vec![
+        json!({"role": "system", "content": "You are a helpful sovereign agent."}),
+        json!({"role": "user", "content": "Status check"}),
+    ];
+
+    let stream_res = backend.stream_chat(&messages, Some(0.0), Some(4)).await;
+    assert!(stream_res.is_ok(), "Streaming failed: {:?}", stream_res.err());
+    let mut stream = stream_res.unwrap();
+
+    let mut full_sse = String::new();
+    while let Some(chunk) = stream.next().await {
+        assert!(chunk.is_ok(), "Chunk read failed: {:?}", chunk.err());
+        let bytes = chunk.unwrap();
+        let chunk_str = String::from_utf8_lossy(&bytes);
+        full_sse.push_str(&chunk_str);
+    }
+
+    assert!(full_sse.contains("data: "), "SSE payload must contain data: prefix");
+    assert!(full_sse.contains("chat.completion.chunk"), "SSE payload must contain chat.completion.chunk");
+    assert!(full_sse.contains("data: [DONE]"), "SSE payload must terminate with [DONE]");
+}
+
+#[tokio::test]
+async fn test_gateway_with_embedded_inference_streaming() {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use openclaw::create_router;
+    use openclaw::GatewayState;
+    use openclaw::persistence::Database;
+    use openclaw::heartbeat::HeartbeatEngine;
+    use tower::ServiceExt;
+
+    let config = ModelConfig {
+        num_layers: 2,
+        num_heads: 4,
+        num_kv_heads: 2,
+        head_dim: 16,
+        hidden_dim: 64,
+        intermediate_dim: 128,
+        vocab_size: 256,
+        block_size: 16,
+        ..Default::default()
+    };
+
+    let embedded_backend = Arc::new(EmbeddedInferenceBackend::with_reference_weights(&config).unwrap());
+    let db = Arc::new(Database::open_in_memory().unwrap());
+    let heartbeat = Arc::new(HeartbeatEngine::with_inference(
+        60,
+        db.clone(),
+        embedded_backend.clone(),
+    ));
+    let skills = Arc::new(SkillRegistry::new());
+    let agent = Arc::new(AgentEngine::new(embedded_backend.clone(), skills.clone(), None));
+
+    let state = GatewayState {
+        start_time: std::time::Instant::now(),
+        inference: embedded_backend,
+        db,
+        heartbeat,
+        skills,
+        agent,
+    };
+    let app = create_router(state);
+
+    let req_payload = serde_json::json!({
+        "model": "atlas-lightning-omni",
+        "messages": [
+            {"role": "user", "content": "hello"}
+        ],
+        "stream": true,
+        "max_tokens": 4
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/chat/completions")
+                .header("Content-Type", "application/json")
+                .body(Body::from(req_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "text/event-stream"
+    );
+
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("data: "), "Gateway SSE output must contain data: prefix");
+    assert!(text.contains("chat.completion.chunk"), "Gateway SSE output must contain chat.completion.chunk");
+    assert!(text.contains("data: [DONE]"), "Gateway SSE output must terminate with [DONE]");
 }
