@@ -27,6 +27,9 @@ jobs:
           repository: aien-dev/aien-sovereign-core
           path: sovereign-core
 
+      - name: Link Sovereign Core Workspace
+        run: ln -s "$GITHUB_WORKSPACE/sovereign-core" "$GITHUB_WORKSPACE/../aien-sovereign-core"
+
       - name: Build Sovereign Inquisitor
         run: cargo build --release --manifest-path sovereign-core/Cargo.toml -p spark-inquisitor
 
