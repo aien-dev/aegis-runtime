@@ -4,6 +4,7 @@ pub mod heartbeat;
 pub mod inference;
 pub mod mojo_bridge;
 pub mod persistence;
+pub mod security;
 pub mod skills;
 pub mod vault;
 
@@ -13,5 +14,6 @@ pub use heartbeat::{HeartbeatEngine, PulseReceipt};
 pub use inference::{ChatTurnResponse, EmbeddedInferenceBackend, EmbeddedModel, HttpInferenceBackend, InferenceEngine, ToolCallFunction, ToolCallItem};
 pub use mojo_bridge::MojoSimdBridge;
 pub use persistence::{CrumbRecord, Database, TaskRecord, TurnRecord};
+pub use security::{SecurityError, WorkspaceCapability};
 pub use skills::{SkillDefinition, SkillExecutionRequest, SkillExecutionResponse, SkillRegistry};
 pub use vault::{VaultResolver, REDACTED_MARKER};
