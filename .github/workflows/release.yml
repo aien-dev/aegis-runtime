@@ -10,18 +10,9 @@ permissions:
   contents: write
 
 jobs:
-  build-release:
-    name: Build Release (${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04-arm
-            arch: aarch64
-          - os: ubuntu-latest
-            arch: x86_64
-
+  build-linux-x86:
+    name: Build Linux x86_64
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -37,22 +28,19 @@ jobs:
           mkdir -p dist
           cp target/release/openclaw dist/openclaw
           chmod +x dist/openclaw
-          tar -czf openclaw-linux-${{ matrix.arch }}.tar.gz -C dist openclaw
-          sha256sum openclaw-linux-${{ matrix.arch }}.tar.gz > openclaw-linux-${{ matrix.arch }}.tar.gz.sha256
+          tar -czf openclaw-linux-x86_64.tar.gz -C dist openclaw
+          sha256sum openclaw-linux-x86_64.tar.gz > openclaw-linux-x86_64.tar.gz.sha256
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: openclaw-linux-${{ matrix.arch }}
-          path: |
-            openclaw-linux-${{ matrix.arch }}.tar.gz
-            openclaw-linux-${{ matrix.arch }}.tar.gz.sha256
+          name: openclaw-linux-x86_64
+          path: openclaw-linux-x86_64.*
 
   publish-release:
-    name: Publish Release and Aggregated Checksums
-    needs: build-release
+    name: Publish Release and Checksums
+    needs: build-linux-x86
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, refs/tags/v) || github.event_name == workflow_dispatch
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -63,7 +51,7 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
-      - name: Generate Aggregated Checksums
+      - name: Generate Checksums
         working-directory: release-artifacts
         run: |
           sha256sum openclaw-linux-*.tar.gz > SHA256SUMS.txt
@@ -73,22 +61,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME="${GITHUB_REF_NAME:-v0.1.0}"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -z "${GITHUB_REF_NAME}" ]; then
-            TAG_NAME="v0.1.0"
+          TAG="${GITHUB_REF_NAME}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="v0.1.0"
           fi
-
-          NOTES_FILE="RELEASE_NOTES.md"
-          if [ ! -f "$NOTES_FILE" ]; then
-            echo "# OpenClaw ${TAG_NAME}" > "$NOTES_FILE"
-            echo "" >> "$NOTES_FILE"
-            echo "Official release of OpenClaw native sovereign runtime." >> "$NOTES_FILE"
-          fi
-
           cd release-artifacts
-          gh release create "$TAG_NAME" openclaw-linux-*.tar.gz SHA256SUMS.txt \
-            --title "OpenClaw ${TAG_NAME}" \
-            --notes-file ../"$NOTES_FILE" \
+          gh release create "$TAG" openclaw-linux-*.tar.gz openclaw-linux-*.sha256 SHA256SUMS.txt \
+            --title "OpenClaw $TAG" \
+            --notes "Official binary release of OpenClaw native sovereign runtime." \
             --draft=false \
             --prerelease=false || \
-          gh release upload "$TAG_NAME" openclaw-linux-*.tar.gz SHA256SUMS.txt --clobber
+          gh release upload "$TAG" openclaw-linux-*.tar.gz openclaw-linux-*.sha256 SHA256SUMS.txt --clobber
