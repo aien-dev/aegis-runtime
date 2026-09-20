@@ -25,6 +25,9 @@ futures-util = "0.3"
 uuid = { version = "1.8", features = ["v4", "serde"] }
 libloading = "0.8"
 anyhow = "1.0.104"
+aien-inference-abi = { path = "../aien-sovereign-core/crates/aien-inference-abi" }
+aien-kv-cache = { path = "../aien-sovereign-core/crates/aien-kv-cache" }
+
 
 [dev-dependencies]
 tempfile = "3.17"
