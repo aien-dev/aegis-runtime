@@ -97,7 +97,9 @@ impl WorkspaceCapability {
     pub fn resolve_read_path(&self, requested: &str) -> Result<PathBuf, SecurityError> {
         let trimmed = requested.trim();
         if trimmed.is_empty() {
-            return Err(SecurityError::InvalidPath("Path cannot be empty".to_string()));
+            return Err(SecurityError::InvalidPath(
+                "Path cannot be empty".to_string(),
+            ));
         }
 
         let candidate = if Path::new(trimmed).is_absolute() {
@@ -114,10 +116,7 @@ impl WorkspaceCapability {
         }
 
         let canonical = candidate.canonicalize().map_err(|e| {
-            SecurityError::IoError(format!(
-                "Failed to canonicalize path {}: {}",
-                trimmed, e
-            ))
+            SecurityError::IoError(format!("Failed to canonicalize path {}: {}", trimmed, e))
         })?;
 
         if !canonical.starts_with(&self.root) {
@@ -136,7 +135,9 @@ impl WorkspaceCapability {
     pub fn resolve_write_path(&self, requested: &str) -> Result<PathBuf, SecurityError> {
         let trimmed = requested.trim();
         if trimmed.is_empty() {
-            return Err(SecurityError::InvalidPath("Path cannot be empty".to_string()));
+            return Err(SecurityError::InvalidPath(
+                "Path cannot be empty".to_string(),
+            ));
         }
 
         let raw_target = if Path::new(trimmed).is_absolute() {
@@ -246,7 +247,9 @@ impl WorkspaceCapability {
     ) -> Result<String, SecurityError> {
         let trimmed_cmd = command.trim();
         if trimmed_cmd.is_empty() {
-            return Err(SecurityError::InvalidPath("Command cannot be empty".to_string()));
+            return Err(SecurityError::InvalidPath(
+                "Command cannot be empty".to_string(),
+            ));
         }
 
         let working_dir = self.resolve_dir_path(cwd)?;
@@ -259,7 +262,9 @@ impl WorkspaceCapability {
             .arg(&wrapped_cmd)
             .current_dir(&working_dir)
             .output()
-            .map_err(|e| SecurityError::CommandFailed(format!("Failed to execute command: {}", e)))?;
+            .map_err(|e| {
+                SecurityError::CommandFailed(format!("Failed to execute command: {}", e))
+            })?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -333,7 +338,9 @@ mod tests {
         let dir = tempdir().unwrap();
         let cap = WorkspaceCapability::new(dir.path()).unwrap();
 
-        let out = cap.execute_shell("echo 'contained shell'", None, 5).unwrap();
+        let out = cap
+            .execute_shell("echo 'contained shell'", None, 5)
+            .unwrap();
         assert!(out.contains("contained shell"));
 
         let res = cap.execute_shell("ls", Some("/etc"), 5);

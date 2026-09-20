@@ -138,14 +138,18 @@ impl SkillRegistry {
         self.register(bash_def, move |args| {
             let cmd = args.get("command").and_then(|c| c.as_str()).unwrap_or("");
             let cwd = args.get("cwd").and_then(|c| c.as_str());
-            ws_bash.execute_shell(cmd, cwd, 15).map_err(|e| e.to_string())
+            ws_bash
+                .execute_shell(cmd, cwd, 15)
+                .map_err(|e| e.to_string())
         });
 
         // Builtin 2: read_file
         let ws_read = self.workspace.clone();
         let read_def = SkillDefinition {
             name: "read_file".to_string(),
-            description: "Read the contents of a text file strictly within authorized workspace roots".to_string(),
+            description:
+                "Read the contents of a text file strictly within authorized workspace roots"
+                    .to_string(),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -156,7 +160,9 @@ impl SkillRegistry {
         };
         self.register(read_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str()).unwrap_or("");
-            let resolved = ws_read.resolve_read_path(path_str).map_err(|e| e.to_string())?;
+            let resolved = ws_read
+                .resolve_read_path(path_str)
+                .map_err(|e| e.to_string())?;
             std::fs::read_to_string(&resolved)
                 .map_err(|e| format!("Failed to read file {}: {}", resolved.display(), e))
         });
@@ -165,7 +171,8 @@ impl SkillRegistry {
         let ws_write = self.workspace.clone();
         let write_def = SkillDefinition {
             name: "write_file".to_string(),
-            description: "Write text contents to a file strictly within authorized workspace roots".to_string(),
+            description: "Write text contents to a file strictly within authorized workspace roots"
+                .to_string(),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -178,7 +185,9 @@ impl SkillRegistry {
         self.register(write_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str()).unwrap_or("");
             let content = args.get("content").and_then(|c| c.as_str()).unwrap_or("");
-            let resolved = ws_write.resolve_write_path(path_str).map_err(|e| e.to_string())?;
+            let resolved = ws_write
+                .resolve_write_path(path_str)
+                .map_err(|e| e.to_string())?;
             if let Some(parent) = resolved.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
@@ -191,7 +200,8 @@ impl SkillRegistry {
         let ws_list = self.workspace.clone();
         let list_def = SkillDefinition {
             name: "list_dir".to_string(),
-            description: "List directory contents strictly within authorized workspace roots".to_string(),
+            description: "List directory contents strictly within authorized workspace roots"
+                .to_string(),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -201,7 +211,9 @@ impl SkillRegistry {
         };
         self.register(list_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str());
-            let resolved = ws_list.resolve_dir_path(path_str).map_err(|e| e.to_string())?;
+            let resolved = ws_list
+                .resolve_dir_path(path_str)
+                .map_err(|e| e.to_string())?;
             let entries = std::fs::read_dir(&resolved)
                 .map_err(|e| format!("Failed to read directory {}: {}", resolved.display(), e))?;
             let mut items = Vec::new();
@@ -228,7 +240,9 @@ impl SkillRegistry {
         };
         self.register(git_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str());
-            let resolved = ws_git.resolve_dir_path(path_str).map_err(|e| e.to_string())?;
+            let resolved = ws_git
+                .resolve_dir_path(path_str)
+                .map_err(|e| e.to_string())?;
             let output = Command::new("git")
                 .arg("-C")
                 .arg(&resolved)
@@ -246,13 +260,22 @@ impl SkillRegistry {
                 .map_err(|e| format!("Failed to run git log: {}", e))?;
             let status_str = String::from_utf8_lossy(&output.stdout);
             let log_str = String::from_utf8_lossy(&log_output.stdout);
-            Ok(format!("HEAD: {}\nStatus:\n{}", log_str.trim(), if status_str.is_empty() { "clean" } else { status_str.trim() }))
+            Ok(format!(
+                "HEAD: {}\nStatus:\n{}",
+                log_str.trim(),
+                if status_str.is_empty() {
+                    "clean"
+                } else {
+                    status_str.trim()
+                }
+            ))
         });
 
         // Builtin 6: cortex_recall
         let cortex_def = SkillDefinition {
             name: "cortex_recall".to_string(),
-            description: "Recall structured memory and lessons from local Spark Cortex engine".to_string(),
+            description: "Recall structured memory and lessons from local Spark Cortex engine"
+                .to_string(),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -273,7 +296,10 @@ impl SkillRegistry {
             parameters_schema: serde_json::json!({ "type": "object" }),
         };
         self.register(ping_def, |_| {
-            Ok("{\"status\":\"healthy\",\"architecture\":\"aarch64\",\"target\":\"gb10\"}".to_string())
+            Ok(
+                "{\"status\":\"healthy\",\"architecture\":\"aarch64\",\"target\":\"gb10\"}"
+                    .to_string(),
+            )
         });
     }
 }

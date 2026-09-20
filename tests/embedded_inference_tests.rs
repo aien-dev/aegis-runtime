@@ -8,13 +8,13 @@
 //! 6. Blackwell GPU device acceleration detection on Grace Blackwell GB10.
 
 use aien_inference_abi::ModelConfig;
+use futures_util::StreamExt;
 use openclaw::inference::{
     format_messages_to_prompt, parse_structured_tool_calls, EmbeddedInferenceBackend,
     EmbeddedModel, InferenceEngine,
 };
 use openclaw::{AgentEngine, SkillExecutionRequest, SkillRegistry};
 use serde_json::json;
-use futures_util::StreamExt;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -72,9 +72,7 @@ fn test_structured_tool_call_lifecycle_loop() {
     assert!(!tools.is_empty(), "Tools list must contain built-in skills");
 
     // 2. Format chat prompt with tools definition
-    let messages = vec![
-        json!({"role": "user", "content": "Read the contents of Cargo.toml"}),
-    ];
+    let messages = vec![json!({"role": "user", "content": "Read the contents of Cargo.toml"})];
     let prompt = format_messages_to_prompt(&messages, Some(&tools));
     assert!(prompt.contains("You have access to the following tools:"));
     assert!(prompt.contains("read_file"));
@@ -91,8 +89,14 @@ fn test_structured_tool_call_lifecycle_loop() {
 ```"#;
 
     let (content, tool_calls) = parse_structured_tool_calls(simulated_model_output);
-    assert_eq!(content.as_deref(), Some("I need to check the project dependencies."));
-    assert!(tool_calls.is_some(), "Tool call must be extracted from model output");
+    assert_eq!(
+        content.as_deref(),
+        Some("I need to check the project dependencies.")
+    );
+    assert!(
+        tool_calls.is_some(),
+        "Tool call must be extracted from model output"
+    );
 
     let calls = tool_calls.unwrap();
     assert_eq!(calls.len(), 1);
@@ -106,7 +110,11 @@ fn test_structured_tool_call_lifecycle_loop() {
         arguments: args,
     };
     let exec_res = registry.execute(&req);
-    assert!(exec_res.success, "Tool execution must succeed: {:?}", exec_res.error);
+    assert!(
+        exec_res.success,
+        "Tool execution must succeed: {:?}",
+        exec_res.error
+    );
     let tool_output = exec_res.output;
     assert!(tool_output.contains("[package]"));
     assert!(tool_output.contains(r#"name = "openclaw""#));
@@ -171,10 +179,15 @@ async fn test_agent_engine_with_embedded_backend_trait() {
 #[tokio::test]
 async fn test_real_model_embedded_execution_if_present() {
     let model = EmbeddedModel::load_default_or_fallback();
-    assert!(model.is_ok(), "EmbeddedModel must load successfully from disk or reference weights: {:?}", model.err());
+    assert!(
+        model.is_ok(),
+        "EmbeddedModel must load successfully from disk or reference weights: {:?}",
+        model.err()
+    );
 
     let mut model = model.unwrap();
-    println!("Model initialized successfully: id={}, layers={}, heads={}",
+    println!(
+        "Model initialized successfully: id={}, layers={}, heads={}",
         model.config.model_id, model.config.num_layers, model.config.num_heads
     );
 
@@ -206,7 +219,11 @@ async fn test_embedded_inference_chat_streaming() {
     ];
 
     let stream_res = backend.stream_chat(&messages, Some(0.0), Some(4)).await;
-    assert!(stream_res.is_ok(), "Streaming failed: {:?}", stream_res.err());
+    assert!(
+        stream_res.is_ok(),
+        "Streaming failed: {:?}",
+        stream_res.err()
+    );
     let mut stream = stream_res.unwrap();
 
     let mut full_sse = String::new();
@@ -217,9 +234,18 @@ async fn test_embedded_inference_chat_streaming() {
         full_sse.push_str(&chunk_str);
     }
 
-    assert!(full_sse.contains("data: "), "SSE payload must contain data: prefix");
-    assert!(full_sse.contains("chat.completion.chunk"), "SSE payload must contain chat.completion.chunk");
-    assert!(full_sse.contains("data: [DONE]"), "SSE payload must terminate with [DONE]");
+    assert!(
+        full_sse.contains("data: "),
+        "SSE payload must contain data: prefix"
+    );
+    assert!(
+        full_sse.contains("chat.completion.chunk"),
+        "SSE payload must contain chat.completion.chunk"
+    );
+    assert!(
+        full_sse.contains("data: [DONE]"),
+        "SSE payload must terminate with [DONE]"
+    );
 }
 
 #[tokio::test]
@@ -227,9 +253,9 @@ async fn test_gateway_with_embedded_inference_streaming() {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use openclaw::create_router;
-    use openclaw::GatewayState;
-    use openclaw::persistence::Database;
     use openclaw::heartbeat::HeartbeatEngine;
+    use openclaw::persistence::Database;
+    use openclaw::GatewayState;
     use tower::ServiceExt;
 
     let config = ModelConfig {
@@ -244,7 +270,8 @@ async fn test_gateway_with_embedded_inference_streaming() {
         ..Default::default()
     };
 
-    let embedded_backend = Arc::new(EmbeddedInferenceBackend::with_reference_weights(&config).unwrap());
+    let embedded_backend =
+        Arc::new(EmbeddedInferenceBackend::with_reference_weights(&config).unwrap());
     let db = Arc::new(Database::open_in_memory().unwrap());
     let heartbeat = Arc::new(HeartbeatEngine::with_inference(
         60,
@@ -252,7 +279,11 @@ async fn test_gateway_with_embedded_inference_streaming() {
         embedded_backend.clone(),
     ));
     let skills = Arc::new(SkillRegistry::new());
-    let agent = Arc::new(AgentEngine::new(embedded_backend.clone(), skills.clone(), None));
+    let agent = Arc::new(AgentEngine::new(
+        embedded_backend.clone(),
+        skills.clone(),
+        None,
+    ));
 
     let state = GatewayState {
         start_time: std::time::Instant::now(),
@@ -295,7 +326,16 @@ async fn test_gateway_with_embedded_inference_streaming() {
         .await
         .unwrap();
     let text = String::from_utf8_lossy(&bytes);
-    assert!(text.contains("data: "), "Gateway SSE output must contain data: prefix");
-    assert!(text.contains("chat.completion.chunk"), "Gateway SSE output must contain chat.completion.chunk");
-    assert!(text.contains("data: [DONE]"), "Gateway SSE output must terminate with [DONE]");
+    assert!(
+        text.contains("data: "),
+        "Gateway SSE output must contain data: prefix"
+    );
+    assert!(
+        text.contains("chat.completion.chunk"),
+        "Gateway SSE output must contain chat.completion.chunk"
+    );
+    assert!(
+        text.contains("data: [DONE]"),
+        "Gateway SSE output must terminate with [DONE]"
+    );
 }

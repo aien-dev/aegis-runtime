@@ -223,7 +223,11 @@ impl MojoSimdBridge {
 
     pub fn token_projection_fallback(tokens: [f32; 4], weights: [f32; 4], bias: f32) -> f32 {
         for i in 0..4 {
-            if tokens[i].is_nan() || weights[i].is_nan() || tokens[i].is_infinite() || weights[i].is_infinite() {
+            if tokens[i].is_nan()
+                || weights[i].is_nan()
+                || tokens[i].is_infinite()
+                || weights[i].is_infinite()
+            {
                 return 0.0;
             }
         }
@@ -238,7 +242,11 @@ impl MojoSimdBridge {
     }
 
     pub fn temperature_scale_fallback(logit: f32, temperature: f32) -> f32 {
-        if logit.is_nan() || temperature.is_nan() || logit.is_infinite() || temperature.is_infinite() {
+        if logit.is_nan()
+            || temperature.is_nan()
+            || logit.is_infinite()
+            || temperature.is_infinite()
+        {
             return 0.0;
         }
         if temperature <= 0.0001 {
@@ -370,7 +378,10 @@ mod tests {
 
         let zero_slice = vec![0.0f32; 8];
         let non_zero_slice = vec![1.0f32; 8];
-        assert_eq!(MojoSimdBridge::cosine_similarity_fallback(&zero_slice, &non_zero_slice), 0.0);
+        assert_eq!(
+            MojoSimdBridge::cosine_similarity_fallback(&zero_slice, &non_zero_slice),
+            0.0
+        );
     }
 
     #[test]
@@ -400,29 +411,56 @@ mod tests {
     fn test_fallback_nan_and_inf_handling() {
         let nan_vec = [f32::NAN, 1.0, 2.0, 3.0];
         let normal_vec = [1.0f32, 2.0, 3.0, 4.0];
-        assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(nan_vec, normal_vec), 0.0);
+        assert_eq!(
+            MojoSimdBridge::cosine_similarity_4d_fallback(nan_vec, normal_vec),
+            0.0
+        );
 
         let inf_vec = [f32::INFINITY, 1.0, 2.0, 3.0];
-        assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(inf_vec, normal_vec), 0.0);
+        assert_eq!(
+            MojoSimdBridge::cosine_similarity_4d_fallback(inf_vec, normal_vec),
+            0.0
+        );
 
         let neg_inf_vec = [f32::NEG_INFINITY, 1.0, 2.0, 3.0];
-        assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(neg_inf_vec, normal_vec), 0.0);
+        assert_eq!(
+            MojoSimdBridge::cosine_similarity_4d_fallback(neg_inf_vec, normal_vec),
+            0.0
+        );
 
         // Token projection with NaN/Inf
-        assert_eq!(MojoSimdBridge::token_projection_fallback(nan_vec, normal_vec, 1.0), 0.0);
-        assert_eq!(MojoSimdBridge::token_projection_fallback(normal_vec, normal_vec, f32::NAN), 0.0);
+        assert_eq!(
+            MojoSimdBridge::token_projection_fallback(nan_vec, normal_vec, 1.0),
+            0.0
+        );
+        assert_eq!(
+            MojoSimdBridge::token_projection_fallback(normal_vec, normal_vec, f32::NAN),
+            0.0
+        );
 
         // Temperature scale with NaN/Inf
-        assert_eq!(MojoSimdBridge::temperature_scale_fallback(f32::NAN, 1.0), 0.0);
-        assert_eq!(MojoSimdBridge::temperature_scale_fallback(2.0, f32::NAN), 0.0);
-        assert_eq!(MojoSimdBridge::temperature_scale_fallback(2.0, f32::INFINITY), 0.0);
+        assert_eq!(
+            MojoSimdBridge::temperature_scale_fallback(f32::NAN, 1.0),
+            0.0
+        );
+        assert_eq!(
+            MojoSimdBridge::temperature_scale_fallback(2.0, f32::NAN),
+            0.0
+        );
+        assert_eq!(
+            MojoSimdBridge::temperature_scale_fallback(2.0, f32::INFINITY),
+            0.0
+        );
     }
 
     #[test]
     fn test_fallback_temperature_scale_edge_cases() {
         // Zero or near-zero temperature should return unscaled logit
         assert_eq!(MojoSimdBridge::temperature_scale_fallback(5.0, 0.0), 5.0);
-        assert_eq!(MojoSimdBridge::temperature_scale_fallback(5.0, 0.00005), 5.0);
+        assert_eq!(
+            MojoSimdBridge::temperature_scale_fallback(5.0, 0.00005),
+            5.0
+        );
 
         // Normal scaling
         let scaled = MojoSimdBridge::temperature_scale_fallback(10.0, 2.0);
@@ -452,7 +490,10 @@ mod tests {
         assert!((uniform4_entropy - (2.0 * std::f32::consts::LN_2)).abs() < 1e-4);
 
         // Mismatched slice length
-        assert_eq!(MojoSimdBridge::cosine_similarity_fallback(&[1.0, 2.0], &[1.0]), 0.0);
+        assert_eq!(
+            MojoSimdBridge::cosine_similarity_fallback(&[1.0, 2.0], &[1.0]),
+            0.0
+        );
         assert_eq!(MojoSimdBridge::cosine_similarity_fallback(&[], &[]), 0.0);
     }
 
@@ -472,9 +513,17 @@ mod tests {
                     let expected = case["expected"].as_f64().unwrap() as f32;
                     let p_arr = [probs[0], probs[1], probs[2], probs[3]];
                     let fb = MojoSimdBridge::token_entropy_fallback(p_arr);
-                    assert!((fb - expected).abs() < 1e-4, "Entropy fallback parity failure for {:?}", case["name"]);
+                    assert!(
+                        (fb - expected).abs() < 1e-4,
+                        "Entropy fallback parity failure for {:?}",
+                        case["name"]
+                    );
                     let live = MojoSimdBridge::token_entropy(p_arr);
-                    assert!((live - expected).abs() < 1e-4, "Entropy live parity failure for {:?}", case["name"]);
+                    assert!(
+                        (live - expected).abs() < 1e-4,
+                        "Entropy live parity failure for {:?}",
+                        case["name"]
+                    );
                 }
             }
         }

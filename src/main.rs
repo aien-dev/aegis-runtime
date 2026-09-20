@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use openclaw::{
-    start_gateway, AgentEngine, Database, EmbeddedInferenceBackend, GatewayState,
-    HeartbeatEngine, HttpInferenceBackend, InferenceEngine, MojoSimdBridge, SkillRegistry,
+    start_gateway, AgentEngine, Database, EmbeddedInferenceBackend, GatewayState, HeartbeatEngine,
+    HttpInferenceBackend, InferenceEngine, MojoSimdBridge, SkillRegistry,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -112,13 +112,24 @@ fn resolve_inference_engine(
     tokenizer_path: Option<&str>,
 ) -> Result<Arc<dyn InferenceEngine>, Box<dyn std::error::Error>> {
     if mode == "http" {
-        info!("Binding OpenClaw to external HTTP inference daemon at {}", max_url);
-        Ok(Arc::new(HttpInferenceBackend::new(Some(max_url.to_string()), None)))
+        info!(
+            "Binding OpenClaw to external HTTP inference daemon at {}",
+            max_url
+        );
+        Ok(Arc::new(HttpInferenceBackend::new(
+            Some(max_url.to_string()),
+            None,
+        )))
     } else {
-        info!("Binding OpenClaw to in-process EmbeddedInferenceBackend (NativeTransformerBackend)...");
+        info!(
+            "Binding OpenClaw to in-process EmbeddedInferenceBackend (NativeTransformerBackend)..."
+        );
         let backend = EmbeddedInferenceBackend::load_or_fallback(model_path, tokenizer_path)
             .map_err(|e| anyhow::anyhow!(e))?;
-        info!("In-process embedded inference backend active: {}", backend.model_id());
+        info!(
+            "In-process embedded inference backend active: {}",
+            backend.model_id()
+        );
         Ok(Arc::new(backend))
     }
 }
@@ -217,13 +228,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Starting OpenClaw persistent heartbeat daemon loop (interval: {}s)...",
                 heartbeat_secs
             );
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(heartbeat_secs));
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(heartbeat_secs));
             loop {
                 interval.tick().await;
                 let receipt = heartbeat.pulse_once().await;
                 info!(
                     "Heartbeat pulse #{}: status={}, tasks={}, actions={}",
-                    receipt.tick_id, receipt.status, receipt.tasks_scanned, receipt.actions_dispatched
+                    receipt.tick_id,
+                    receipt.status,
+                    receipt.tasks_scanned,
+                    receipt.actions_dispatched
                 );
             }
         }
@@ -240,7 +255,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 model_path.as_deref(),
                 tokenizer_path.as_deref(),
             )?;
-            println!("Dispatching query to inference engine ({}): {}", inference.model_id(), prompt);
+            println!(
+                "Dispatching query to inference engine ({}): {}",
+                inference.model_id(),
+                prompt
+            );
             match inference.generate(&prompt, None, None).await {
                 Ok(reply) => println!("\n{}", reply),
                 Err(err) => eprintln!("Inference error: {}", err),

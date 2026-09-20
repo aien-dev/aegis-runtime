@@ -11,12 +11,13 @@ use aien_inference_abi::{ExecutionSurface, ModelConfig};
 use aien_kv_cache::SharedKvManager;
 use aien_scheduler::AienScheduler;
 use async_trait::async_trait;
-use parking_lot::{Mutex, RwLock};
 use futures_util::StreamExt;
+use parking_lot::{Mutex, RwLock};
 use reqwest::Client;
 use std::pin::Pin;
 
-pub type ChatStream = Pin<Box<dyn futures_util::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send>>;
+pub type ChatStream =
+    Pin<Box<dyn futures_util::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send>>;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -221,7 +222,10 @@ impl InferenceEngine for HttpInferenceBackend {
                     let err_status = res.status();
                     let err_text = res.text().await.unwrap_or_default();
                     warn!("MAX inference error {}: {}", err_status, err_text);
-                    Err(anyhow::anyhow!("Inference endpoint error {}: {}", err_status, err_text).into())
+                    Err(
+                        anyhow::anyhow!("Inference endpoint error {}: {}", err_status, err_text)
+                            .into(),
+                    )
                 }
             }
             Err(e) => {
@@ -273,7 +277,10 @@ impl InferenceEngine for HttpInferenceBackend {
                     let err_status = res.status();
                     let err_text = res.text().await.unwrap_or_default();
                     warn!("MAX inference error {}: {}", err_status, err_text);
-                    Err(anyhow::anyhow!("Inference endpoint error {}: {}", err_status, err_text).into())
+                    Err(
+                        anyhow::anyhow!("Inference endpoint error {}: {}", err_status, err_text)
+                            .into(),
+                    )
                 }
             }
             Err(e) => {
@@ -304,9 +311,9 @@ impl InferenceEngine for HttpInferenceBackend {
             return Err(anyhow::anyhow!("MAX streaming error {}: {}", status, text).into());
         }
 
-        let stream = res.bytes_stream().map(|item| {
-            item.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-        });
+        let stream = res
+            .bytes_stream()
+            .map(|item| item.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
         Ok(Box::pin(stream))
     }
 
@@ -357,7 +364,9 @@ impl EmbeddedModel {
             TinyLlamaTokenizer::from_file(&tokenizer_path)
                 .map_err(|e| format!("Failed to load tokenizer: {}", e))?
         } else {
-            let fixture_path = PathBuf::from("../aien-sovereign-core/crates/aien-inference-abi/fixtures/tokenizer.json");
+            let fixture_path = PathBuf::from(
+                "../aien-sovereign-core/crates/aien-inference-abi/fixtures/tokenizer.json",
+            );
             if fixture_path.exists() {
                 TinyLlamaTokenizer::from_file(&fixture_path)
                     .map_err(|e| format!("Failed to load fixture tokenizer: {}", e))?
@@ -405,14 +414,24 @@ impl EmbeddedModel {
         };
 
         let transformer = if paged_kv {
-            NativeTransformerBackend::with_paged_kv_backend(weights, tensor_backend, 2048, config.block_size)?
+            NativeTransformerBackend::with_paged_kv_backend(
+                weights,
+                tensor_backend,
+                2048,
+                config.block_size,
+            )?
         } else {
             NativeTransformerBackend::with_backend(weights, tensor_backend)
         };
 
         let kv_cache = transformer.kv_manager.clone();
-        let tokenizer = TinyLlamaTokenizer::from_file(tokenizer_path.as_ref())
-            .map_err(|e| format!("Failed to load tokenizer from {}: {}", tokenizer_path.as_ref().display(), e))?;
+        let tokenizer = TinyLlamaTokenizer::from_file(tokenizer_path.as_ref()).map_err(|e| {
+            format!(
+                "Failed to load tokenizer from {}: {}",
+                tokenizer_path.as_ref().display(),
+                e
+            )
+        })?;
 
         Ok(Self {
             tokenizer,
@@ -449,7 +468,9 @@ impl EmbeddedModel {
     where
         F: FnMut(&str) -> bool,
     {
-        let prompt_tokens = self.tokenizer.encode(prompt)
+        let prompt_tokens = self
+            .tokenizer
+            .encode(prompt)
             .map_err(|e| format!("Encoding failed: {}", e))?;
 
         let seq_id = generate_sequence_id();
@@ -475,8 +496,15 @@ impl EmbeddedModel {
     }
 
     /// Generates text completion from raw prompt string.
-    pub fn generate(&mut self, prompt: &str, max_tokens: usize, temperature: f32) -> Result<String, String> {
-        let prompt_tokens = self.tokenizer.encode(prompt)
+    pub fn generate(
+        &mut self,
+        prompt: &str,
+        max_tokens: usize,
+        temperature: f32,
+    ) -> Result<String, String> {
+        let prompt_tokens = self
+            .tokenizer
+            .encode(prompt)
             .map_err(|e| format!("Encoding failed: {}", e))?;
 
         let seq_id = generate_sequence_id();
@@ -493,7 +521,8 @@ impl EmbeddedModel {
             &stop_tokens,
         )?;
 
-        self.tokenizer.decode(&generated_ids)
+        self.tokenizer
+            .decode(&generated_ids)
             .map_err(|e| format!("Decoding failed: {}", e))
     }
 
@@ -562,7 +591,8 @@ impl EmbeddedInferenceBackend {
         use_gpu: bool,
         paged_kv: bool,
     ) -> Result<Self, String> {
-        let model = EmbeddedModel::load_checkpoint(checkpoint_path, tokenizer_path, use_gpu, paged_kv)?;
+        let model =
+            EmbeddedModel::load_checkpoint(checkpoint_path, tokenizer_path, use_gpu, paged_kv)?;
         Ok(Self::new(model))
     }
 
@@ -602,7 +632,11 @@ impl InferenceEngine for EmbeddedInferenceBackend {
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let model = self.model.clone();
         let prompt_str = if let Some(sys) = system_prompt {
-            format!("<|system|>\n{}</s>\n<|user|>\n{}</s>\n<|assistant|>\n", sys.trim(), prompt.trim())
+            format!(
+                "<|system|>\n{}</s>\n<|user|>\n{}</s>\n<|assistant|>\n",
+                sys.trim(),
+                prompt.trim()
+            )
         } else {
             format!("<|user|>\n{}</s>\n<|assistant|>\n", prompt.trim())
         };
@@ -697,9 +731,12 @@ impl InferenceEngine for EmbeddedInferenceBackend {
                         "finish_reason": null
                     }]
                 });
-                let payload = format!("data: {}
+                let payload = format!(
+                    "data: {}
 
-", chunk_json);
+",
+                    chunk_json
+                );
                 tx.blocking_send(Ok(bytes::Bytes::from(payload))).is_ok()
             });
 
@@ -719,11 +756,14 @@ impl InferenceEngine for EmbeddedInferenceBackend {
                     "finish_reason": "stop"
                 }]
             });
-            let term_payload = format!("data: {}
+            let term_payload = format!(
+                "data: {}
 
 data: [DONE]
 
-", term_chunk);
+",
+                term_chunk
+            );
             let _ = tx.blocking_send(Ok(bytes::Bytes::from(term_payload)));
         });
 
@@ -781,17 +821,35 @@ pub fn format_messages_to_prompt(
                 if let Some(tool_calls) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
                     let mut tc_text = String::new();
                     for tc in tool_calls {
-                        let name = tc.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).unwrap_or("");
-                        let args = tc.get("function").and_then(|f| f.get("arguments")).and_then(|a| a.as_str()).unwrap_or("{}");
-                        tc_text.push_str(&format!("```json\n{{\"name\": \"{}\", \"arguments\": {}}}\n```\n", name, args));
+                        let name = tc
+                            .get("function")
+                            .and_then(|f| f.get("name"))
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("");
+                        let args = tc
+                            .get("function")
+                            .and_then(|f| f.get("arguments"))
+                            .and_then(|a| a.as_str())
+                            .unwrap_or("{}");
+                        tc_text.push_str(&format!(
+                            "```json\n{{\"name\": \"{}\", \"arguments\": {}}}\n```\n",
+                            name, args
+                        ));
                     }
-                    prompt.push_str(&format!("<|assistant|>\n{}{}\n</s>\n", content.trim(), tc_text.trim()));
+                    prompt.push_str(&format!(
+                        "<|assistant|>\n{}{}\n</s>\n",
+                        content.trim(),
+                        tc_text.trim()
+                    ));
                 } else {
                     prompt.push_str(&format!("<|assistant|>\n{}</s>\n", content.trim()));
                 }
             }
             "tool" => {
-                prompt.push_str(&format!("<|user|>\n[Tool Output]: {}</s>\n", content.trim()));
+                prompt.push_str(&format!(
+                    "<|user|>\n[Tool Output]: {}</s>\n",
+                    content.trim()
+                ));
             }
             _ => {
                 prompt.push_str(&format!("<|user|>\n{}</s>\n", content.trim()));
@@ -817,7 +875,11 @@ pub fn parse_structured_tool_calls(text: &str) -> (Option<String>, Option<Vec<To
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
                 if let Some(item) = extract_tool_call_from_value(&val) {
                     let prefix = text[..start].trim().to_string();
-                    let content = if prefix.is_empty() { None } else { Some(prefix) };
+                    let content = if prefix.is_empty() {
+                        None
+                    } else {
+                        Some(prefix)
+                    };
                     return (content, Some(vec![item]));
                 }
             }
@@ -832,7 +894,11 @@ pub fn parse_structured_tool_calls(text: &str) -> (Option<String>, Option<Vec<To
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
                 if let Some(item) = extract_tool_call_from_value(&val) {
                     let prefix = text[..start].trim().to_string();
-                    let content = if prefix.is_empty() { None } else { Some(prefix) };
+                    let content = if prefix.is_empty() {
+                        None
+                    } else {
+                        Some(prefix)
+                    };
                     return (content, Some(vec![item]));
                 }
             }
@@ -847,7 +913,11 @@ pub fn parse_structured_tool_calls(text: &str) -> (Option<String>, Option<Vec<To
                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(candidate) {
                     if let Some(item) = extract_tool_call_from_value(&val) {
                         let prefix = text[..start].trim().to_string();
-                        let content = if prefix.is_empty() { None } else { Some(prefix) };
+                        let content = if prefix.is_empty() {
+                            None
+                        } else {
+                            Some(prefix)
+                        };
                         return (content, Some(vec![item]));
                     }
                 }
@@ -859,7 +929,10 @@ pub fn parse_structured_tool_calls(text: &str) -> (Option<String>, Option<Vec<To
 }
 
 fn extract_tool_call_from_value(val: &serde_json::Value) -> Option<ToolCallItem> {
-    let name = val.get("name").or_else(|| val.get("tool")).and_then(|n| n.as_str())?;
+    let name = val
+        .get("name")
+        .or_else(|| val.get("tool"))
+        .and_then(|n| n.as_str())?;
     let arguments = if let Some(args) = val.get("arguments").or_else(|| val.get("params")) {
         if args.is_string() {
             args.as_str().unwrap().to_string()
@@ -913,7 +986,8 @@ fn find_tokenizer_path() -> Option<PathBuf> {
         return Some(default_snap);
     }
 
-    let fixture = PathBuf::from("../aien-sovereign-core/crates/aien-inference-abi/fixtures/tokenizer.json");
+    let fixture =
+        PathBuf::from("../aien-sovereign-core/crates/aien-inference-abi/fixtures/tokenizer.json");
     if fixture.exists() {
         return Some(fixture);
     }
@@ -952,7 +1026,9 @@ mod tests {
             Some("atlas-lightning-omni".to_string()),
         );
         let messages = vec![json!({"role": "user", "content": "ping"})];
-        let res = engine.generate_chat_with_tools(&messages, None, None, None).await;
+        let res = engine
+            .generate_chat_with_tools(&messages, None, None, None)
+            .await;
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert!(err.to_string().contains("Inference endpoint unreachable"));
@@ -1002,7 +1078,10 @@ mod tests {
     fn test_parse_structured_tool_calls_plain_response() {
         let text = "All tasks completed successfully with zero defects.";
         let (content, calls) = parse_structured_tool_calls(text);
-        assert_eq!(content.as_deref(), Some("All tasks completed successfully with zero defects."));
+        assert_eq!(
+            content.as_deref(),
+            Some("All tasks completed successfully with zero defects.")
+        );
         assert!(calls.is_none());
     }
 
@@ -1028,7 +1107,11 @@ mod tests {
 
         let messages = vec![json!({"role": "user", "content": "ping"})];
         let reply = backend.generate_chat(&messages, Some(0.0), Some(4)).await;
-        assert!(reply.is_ok(), "Embedded chat generation must succeed: {:?}", reply);
+        assert!(
+            reply.is_ok(),
+            "Embedded chat generation must succeed: {:?}",
+            reply
+        );
         let text = reply.unwrap();
         assert!(!text.is_empty(), "Generated text must not be empty");
     }

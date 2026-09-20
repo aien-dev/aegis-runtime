@@ -11,7 +11,10 @@ pub mod vault;
 pub use agent::{AgentEngine, AgentExecutionResult, AgentStep};
 pub use gateway::{create_router, start_gateway, GatewayState, HealthResponse};
 pub use heartbeat::{HeartbeatEngine, PulseReceipt};
-pub use inference::{ChatStream, ChatTurnResponse, EmbeddedInferenceBackend, EmbeddedModel, HttpInferenceBackend, InferenceEngine, ToolCallFunction, ToolCallItem};
+pub use inference::{
+    ChatStream, ChatTurnResponse, EmbeddedInferenceBackend, EmbeddedModel, HttpInferenceBackend,
+    InferenceEngine, ToolCallFunction, ToolCallItem,
+};
 pub use mojo_bridge::MojoSimdBridge;
 pub use persistence::{CrumbRecord, Database, TaskRecord, TurnRecord};
 pub use security::{SecurityError, WorkspaceCapability};

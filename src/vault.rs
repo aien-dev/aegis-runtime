@@ -117,7 +117,9 @@ mod tests {
     #[test]
     fn test_vault_missing_key_fallback() {
         let vault = VaultResolver::new();
-        let err = vault.resolve_secret("NONEXISTENT_KEY_12345_XYZ").unwrap_err();
+        let err = vault
+            .resolve_secret("NONEXISTENT_KEY_12345_XYZ")
+            .unwrap_err();
         assert!(err.contains("not found in hardware TPM vault or process environment"));
     }
 
@@ -127,7 +129,8 @@ mod tests {
         vault.insert_cached("KEY_A", "secret_alpha_99");
         vault.insert_cached("KEY_B", "secret_beta_88");
 
-        let multiline = "Line 1: secret_alpha_99\nLine 2: benign text\nLine 3: bearer secret_beta_88 token";
+        let multiline =
+            "Line 1: secret_alpha_99\nLine 2: benign text\nLine 3: bearer secret_beta_88 token";
         let redacted = vault.redact_sensitive_text(multiline);
         assert!(!redacted.contains("secret_alpha_99"));
         assert!(!redacted.contains("secret_beta_88"));

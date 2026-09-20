@@ -386,7 +386,11 @@ pub async fn shell_handler(
     State(state): State<GatewayState>,
     Json(payload): Json<ShellRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    match state.skills.workspace().execute_shell(&payload.command, None, 15) {
+    match state
+        .skills
+        .workspace()
+        .execute_shell(&payload.command, None, 15)
+    {
         Ok(stdout) => Ok(Json(ShellResponse {
             stdout,
             stderr: String::new(),
@@ -667,7 +671,11 @@ mod tests {
         let inference = Arc::new(HttpInferenceBackend::new(None, None));
         let heartbeat = Arc::new(HeartbeatEngine::new(60, db.clone()));
         let skills = Arc::new(SkillRegistry::new());
-        let agent = Arc::new(AgentEngine::new(inference.clone(), skills.clone(), Some(db.clone())));
+        let agent = Arc::new(AgentEngine::new(
+            inference.clone(),
+            skills.clone(),
+            Some(db.clone()),
+        ));
 
         let state = GatewayState {
             start_time: Instant::now(),

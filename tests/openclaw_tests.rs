@@ -16,47 +16,52 @@ async fn spawn_mock_inference_server() -> String {
     let app = axum::Router::new()
         .route(
             "/v1/chat/completions",
-            axum::routing::post(|axum::Json(body): axum::Json<serde_json::Value>| async move {
-                use axum::response::IntoResponse;
-                let is_stream = body.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
-                if is_stream {
-                    let chunk = serde_json::json!({
-                        "id": "chatcmpl-mock-chunk",
-                        "object": "chat.completion.chunk",
-                        "choices": [{
-                            "delta": {"content": "mock streaming chunk"},
-                            "index": 0,
-                            "finish_reason": "stop"
-                        }]
-                    });
-                    let sse = format!("data: {}\n\ndata: [DONE]\n\n", chunk);
-                    axum::response::Response::builder()
-                        .header("Content-Type", "text/event-stream")
-                        .body(axum::body::Body::from(sse))
-                        .unwrap()
-                } else {
-                    let resp = serde_json::json!({
-                        "id": "chatcmpl-mock",
-                        "object": "chat.completion",
-                        "created": 1789783086,
-                        "model": "atlas-lightning-omni",
-                        "choices": [{
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": "Mock inference response."
-                            },
-                            "finish_reason": "stop"
-                        }],
-                        "usage": {
-                            "prompt_tokens": 5,
-                            "completion_tokens": 6,
-                            "total_tokens": 11
-                        }
-                    });
-                    axum::response::Json(resp).into_response()
-                }
-            }),
+            axum::routing::post(
+                |axum::Json(body): axum::Json<serde_json::Value>| async move {
+                    use axum::response::IntoResponse;
+                    let is_stream = body
+                        .get("stream")
+                        .and_then(|s| s.as_bool())
+                        .unwrap_or(false);
+                    if is_stream {
+                        let chunk = serde_json::json!({
+                            "id": "chatcmpl-mock-chunk",
+                            "object": "chat.completion.chunk",
+                            "choices": [{
+                                "delta": {"content": "mock streaming chunk"},
+                                "index": 0,
+                                "finish_reason": "stop"
+                            }]
+                        });
+                        let sse = format!("data: {}\n\ndata: [DONE]\n\n", chunk);
+                        axum::response::Response::builder()
+                            .header("Content-Type", "text/event-stream")
+                            .body(axum::body::Body::from(sse))
+                            .unwrap()
+                    } else {
+                        let resp = serde_json::json!({
+                            "id": "chatcmpl-mock",
+                            "object": "chat.completion",
+                            "created": 1789783086,
+                            "model": "atlas-lightning-omni",
+                            "choices": [{
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": "Mock inference response."
+                                },
+                                "finish_reason": "stop"
+                            }],
+                            "usage": {
+                                "prompt_tokens": 5,
+                                "completion_tokens": 6,
+                                "total_tokens": 11
+                            }
+                        });
+                        axum::response::Json(resp).into_response()
+                    }
+                },
+            ),
         )
         .route(
             "/v1/models",
@@ -82,10 +87,7 @@ async fn spawn_mock_inference_server() -> String {
 async fn create_test_state() -> GatewayState {
     let mock_endpoint = spawn_mock_inference_server().await;
     let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(HttpInferenceBackend::new(
-        Some(mock_endpoint),
-        None,
-    ));
+    let inference = Arc::new(HttpInferenceBackend::new(Some(mock_endpoint), None));
     let heartbeat = Arc::new(HeartbeatEngine::with_inference(
         60,
         db.clone(),
@@ -507,15 +509,27 @@ async fn test_gateway_concurrent_requests_under_tokio_spawns() {
         handles.push(tokio::spawn(async move {
             match i % 4 {
                 0 => {
-                    let res = client_clone.get(format!("{}/health", base)).send().await.unwrap();
+                    let res = client_clone
+                        .get(format!("{}/health", base))
+                        .send()
+                        .await
+                        .unwrap();
                     assert_eq!(res.status(), 200);
                 }
                 1 => {
-                    let res = client_clone.get(format!("{}/v1/models", base)).send().await.unwrap();
+                    let res = client_clone
+                        .get(format!("{}/v1/models", base))
+                        .send()
+                        .await
+                        .unwrap();
                     assert_eq!(res.status(), 200);
                 }
                 2 => {
-                    let res = client_clone.get(format!("{}/api/v1/skills", base)).send().await.unwrap();
+                    let res = client_clone
+                        .get(format!("{}/api/v1/skills", base))
+                        .send()
+                        .await
+                        .unwrap();
                     assert_eq!(res.status(), 200);
                 }
                 _ => {
@@ -779,7 +793,10 @@ async fn test_gateway_websocket_lifecycle_ping_pong_and_close() {
     let shell_msg = ws_stream.next().await.unwrap().unwrap();
     let shell_val: Value = serde_json::from_str(&shell_msg.to_string()).unwrap();
     assert_eq!(shell_val["type"], "shell_output");
-    assert!(shell_val["stdout"].as_str().unwrap().contains("ws_shell_ok"));
+    assert!(shell_val["stdout"]
+        .as_str()
+        .unwrap()
+        .contains("ws_shell_ok"));
 
     // 5. Clean connection close
     ws_stream
@@ -844,10 +861,7 @@ async fn test_gateway_submillisecond_health_latency_benchmark() {
 async fn test_agent_multiturn_accumulation_and_error_recovery() {
     let mock_url = spawn_mock_inference_server().await;
     let db = Arc::new(Database::open_in_memory().unwrap());
-    let inference = Arc::new(HttpInferenceBackend::new(
-        Some(mock_url),
-        None,
-    ));
+    let inference = Arc::new(HttpInferenceBackend::new(Some(mock_url), None));
     let skills = Arc::new(SkillRegistry::new());
     let agent = AgentEngine::new(inference, skills.clone(), Some(db.clone()));
 
@@ -937,8 +951,14 @@ fn test_mojo_simd_mathematical_invariants_and_edge_cases() {
     // Zero vectors
     let zero = [0.0f32, 0.0, 0.0, 0.0];
     let non_zero = [1.0f32, 2.0, 3.0, 4.0];
-    assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(zero, non_zero), 0.0);
-    assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(zero, zero), 0.0);
+    assert_eq!(
+        MojoSimdBridge::cosine_similarity_4d_fallback(zero, non_zero),
+        0.0
+    );
+    assert_eq!(
+        MojoSimdBridge::cosine_similarity_4d_fallback(zero, zero),
+        0.0
+    );
 
     // Identical vectors
     let v = [0.5f32, -0.5, 0.5, -0.5];
@@ -958,12 +978,21 @@ fn test_mojo_simd_mathematical_invariants_and_edge_cases() {
     // NaN and Inf handling
     let nan_v = [f32::NAN, 1.0, 2.0, 3.0];
     let inf_v = [f32::INFINITY, 1.0, 2.0, 3.0];
-    assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(nan_v, non_zero), 0.0);
-    assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(inf_v, non_zero), 0.0);
+    assert_eq!(
+        MojoSimdBridge::cosine_similarity_4d_fallback(nan_v, non_zero),
+        0.0
+    );
+    assert_eq!(
+        MojoSimdBridge::cosine_similarity_4d_fallback(inf_v, non_zero),
+        0.0
+    );
 
     // Temperature scale boundaries
     assert_eq!(MojoSimdBridge::temperature_scale_fallback(4.0, 0.0), 4.0);
-    assert_eq!(MojoSimdBridge::temperature_scale_fallback(4.0, f32::NAN), 0.0);
+    assert_eq!(
+        MojoSimdBridge::temperature_scale_fallback(4.0, f32::NAN),
+        0.0
+    );
     let normal_scaled = MojoSimdBridge::temperature_scale_fallback(8.0, 2.0);
     assert!((normal_scaled - 4.0).abs() < 1e-4);
 }

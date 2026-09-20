@@ -76,7 +76,10 @@ impl AgentEngine {
         count
     }
 
-    pub fn prune_context_window(messages: &mut Vec<serde_json::Value>, token_budget: usize) -> bool {
+    pub fn prune_context_window(
+        messages: &mut Vec<serde_json::Value>,
+        token_budget: usize,
+    ) -> bool {
         if messages.len() <= 2 {
             return false;
         }
@@ -181,7 +184,9 @@ impl AgentEngine {
                     let output_str = if res.success {
                         res.output.clone()
                     } else {
-                        res.error.clone().unwrap_or_else(|| "Unknown error".to_string())
+                        res.error
+                            .clone()
+                            .unwrap_or_else(|| "Unknown error".to_string())
                     };
 
                     tool_exec_records.push(ToolExecutionRecord {
@@ -235,12 +240,7 @@ impl AgentEngine {
         let duration = start.elapsed().as_millis();
 
         if let Some(ref db) = self.db {
-            let _ = db.record_turn(
-                "agent_autonomous",
-                goal,
-                &final_response,
-                duration as u64,
-            );
+            let _ = db.record_turn("agent_autonomous", goal, &final_response, duration as u64);
         }
 
         Ok(AgentExecutionResult {

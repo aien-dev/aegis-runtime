@@ -264,7 +264,8 @@ mod tests {
     #[tokio::test]
     async fn test_heartbeat_prohibited_root_command_rejection() {
         let db = Arc::new(Database::open_in_memory().unwrap());
-        db.create_task("hb_sec", "shell_exec", "cd /etc && ls").unwrap();
+        db.create_task("hb_sec", "shell_exec", "cd /etc && ls")
+            .unwrap();
 
         let engine = HeartbeatEngine::new(60, db.clone());
         let receipt = engine.pulse_once().await;
