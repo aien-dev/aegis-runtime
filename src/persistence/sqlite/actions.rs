@@ -28,7 +28,7 @@ impl ActionStore for SqliteActionStore {
                 let receipt_str = action
                     .receipt
                     .as_ref()
-                    .map(|r| serde_json::to_string(r))
+                    .map(serde_json::to_string)
                     .transpose()?;
 
                 conn.execute(
@@ -106,7 +106,7 @@ impl ActionStore for SqliteActionStore {
                 let receipt_str = action
                     .receipt
                     .as_ref()
-                    .map(|r| serde_json::to_string(r))
+                    .map(serde_json::to_string)
                     .transpose()?;
 
                 let rows = conn.execute(

@@ -45,7 +45,7 @@ impl RunStore for SqliteRunStore {
 
                 let trigger_str = serde_json::to_string(&run.trigger)?;
                 let budget_str = serde_json::to_string(&run.budget)?;
-                let term_str = run.termination.as_ref().map(|t| serde_json::to_string(t)).transpose()?;
+                let term_str = run.termination.as_ref().map(serde_json::to_string).transpose()?;
 
                 conn.execute(
                     "INSERT INTO runs (id, session_id, state, trigger_json, steps_used, inference_calls_used, actions_used, budget_json, started_at, completed_at, termination_json)
@@ -127,7 +127,7 @@ impl RunStore for SqliteRunStore {
                 let term_str = run
                     .termination
                     .as_ref()
-                    .map(|t| serde_json::to_string(t))
+                    .map(serde_json::to_string)
                     .transpose()?;
 
                 let rows = conn.execute(

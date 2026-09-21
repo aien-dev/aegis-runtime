@@ -3,7 +3,7 @@ name = "aegis"
 version = "0.2.0"
 edition = "2021"
 authors = ["Drake Stapleton <drake.aien@proton.me>"]
-license = "Apache-2.0 WITH LLVM-exception"
+license = "AGPL-3.0-only"
 description = "Sovereign agent runtime with defense plane, context branching, and streaming gateway"
 repository = "https://github.com/aien-dev/aegis-runtime"
 
@@ -25,13 +25,15 @@ futures-util = "0.3"
 uuid = { version = "1.8", features = ["v4", "serde"] }
 libloading = "0.8"
 anyhow = "1.0.104"
-aien-inference-abi = { path = "../aien-sovereign-core/crates/aien-inference-abi" }
-aien-kv-cache = { path = "../aien-sovereign-core/crates/aien-kv-cache" }
-aien-scheduler = { path = "../aien-sovereign-core/crates/aien-scheduler" }
 async-trait = "0.1"
 parking_lot = "0.12"
 bytes = "1.6"
 
+# Canonical AIEN Protocol Crates
+aien-protocol-types = { path = "../aien-protocols/crates/aien-protocol-types" }
+aien-agent-state-abi = { path = "../aien-protocols/crates/aien-agent-state-abi" }
+aien-inference-protocol = { path = "../aien-protocols/crates/aien-inference-protocol" }
+aien-inference-client = { path = "../aien-protocols/crates/aien-inference-client" }
 
 [dev-dependencies]
 tempfile = "3.17"

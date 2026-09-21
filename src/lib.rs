@@ -20,7 +20,7 @@ pub use execution::{Action, ActionReceipt, ActionRequest, ActionStatus, Executio
 pub use gateway::{create_router, start_gateway, GatewayState, HealthResponse};
 pub use heartbeat::{HeartbeatEngine, PulseReceipt};
 pub use inference::{
-    ChatStream, ChatTurnResponse, EmbeddedInferenceBackend, EmbeddedModel, HttpInferenceBackend,
+    ChatStream, ChatTurnResponse, EmbeddedInferenceBackend, ProtocolInferenceBackend, HttpInferenceBackend,
     InferenceEngine, ToolCallFunction, ToolCallItem,
 };
 pub use mojo_bridge::MojoSimdBridge;
