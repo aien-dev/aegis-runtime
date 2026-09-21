@@ -16,6 +16,31 @@ pub enum RunState {
     Cancelled,
 }
 
+impl RunState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::WaitingForApproval => "waiting_for_approval",
+            Self::WaitingForTool => "waiting_for_tool",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "running" => Some(Self::Running),
+            "waiting_for_approval" => Some(Self::WaitingForApproval),
+            "waiting_for_tool" => Some(Self::WaitingForTool),
+            "completed" => Some(Self::Completed),
+            "failed" => Some(Self::Failed),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Run {
     pub id: RunId,

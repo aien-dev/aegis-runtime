@@ -1,7 +1,7 @@
 use aegis::{
-    ActionId, ActionReceipt, AegisEvent, ApprovalId, ContainmentLevel, DoctrineDecision, EventBus,
-    EventEnvelope, EventId, Message, MessageId, Role, Run, RunBudget, RunId, RunState, Session,
-    SessionId, SessionStatus, SystemMessage, TerminationReason, Trigger, UserMessage,
+    ActionId, ActionReceipt, AegisEvent, ApprovalId, DoctrineDecision, EventBus, EventEnvelope,
+    EventId, Message, MessageId, Role, Run, RunBudget, RunId, RunState, Session, SessionId,
+    SessionStatus, SystemMessage, TerminationReason, Trigger, UserMessage,
 };
 
 #[test]
