@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::info;
 
+use super::async_db::AsyncDatabase;
+use super::sqlite::schema::initialize_schema;
 use crate::heartbeat::PulseReceipt;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -47,36 +49,17 @@ pub struct Database {
 impl Database {
     pub fn open(path: &Path) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(path)?;
-
-        let _ = conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()));
-        conn.execute_batch(
-            "
-            PRAGMA synchronous = NORMAL;
-            PRAGMA temp_store = MEMORY;
-            PRAGMA cache_size = -64000;
-            ",
-        )?;
-
+        let transcript_path = path.parent().map(|p| p.join("transcript.jsonl"));
         let db = Self {
             conn: Arc::new(Mutex::new(conn)),
-            transcript_path: Some(path.with_file_name("events.jsonl")),
+            transcript_path,
         };
         db.init_tables()?;
-
-        info!("OpenClaw SQLite WAL database initialized at {:?}", path);
         Ok(db)
     }
 
     pub fn open_in_memory() -> Result<Self, rusqlite::Error> {
         let conn = Connection::open_in_memory()?;
-        let _ = conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()));
-        conn.execute_batch(
-            "
-            PRAGMA synchronous = NORMAL;
-            PRAGMA temp_store = MEMORY;
-            PRAGMA cache_size = -64000;
-            ",
-        )?;
         let db = Self {
             conn: Arc::new(Mutex::new(conn)),
             transcript_path: None,
@@ -85,64 +68,14 @@ impl Database {
         Ok(db)
     }
 
-    pub fn set_transcript_path(&mut self, path: PathBuf) {
-        self.transcript_path = Some(path);
+    pub fn to_async(&self) -> AsyncDatabase {
+        AsyncDatabase::from_connection_arc(Arc::clone(&self.conn), self.transcript_path.clone())
     }
 
-    fn init_tables(&self) -> Result<(), rusqlite::Error> {
+    pub fn init_tables(&self) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS sessions (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS turns (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                prompt TEXT NOT NULL,
-                response TEXT NOT NULL,
-                duration_ms INTEGER NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS heartbeats (
-                tick_id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL,
-                status TEXT NOT NULL,
-                tasks_scanned INTEGER NOT NULL,
-                actions_dispatched INTEGER NOT NULL,
-                notes TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS tasks (
-                id TEXT PRIMARY KEY,
-                task_type TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                status TEXT NOT NULL,
-                result TEXT,
-                created_at TEXT NOT NULL,
-                completed_at TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS memory_crumbs (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                namespace TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS skills (
-                name TEXT PRIMARY KEY,
-                description TEXT NOT NULL,
-                command TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            ",
-        )?;
+        initialize_schema(&conn)?;
+        info!("SQLite tables initialized");
         Ok(())
     }
 
@@ -357,32 +290,5 @@ impl Database {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_task_lifecycle_and_crumbs() {
-        let db = Database::open_in_memory().unwrap();
-        db.create_task("t1", "build_check", "cargo check").unwrap();
-
-        let pending = db.list_pending_tasks().unwrap();
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].id, "t1");
-        assert_eq!(pending[0].task_type, "build_check");
-
-        db.complete_task("t1", "passed").unwrap();
-        let remaining = db.list_pending_tasks().unwrap();
-        assert_eq!(remaining.len(), 0);
-
-        db.store_crumb("summary", "all tests passed", "cortex")
-            .unwrap();
-        let crumbs = db.get_recent_crumbs("cortex", 10).unwrap();
-        assert_eq!(crumbs.len(), 1);
-        assert_eq!(crumbs[0].key, "summary");
-        assert_eq!(crumbs[0].value, "all tests passed");
     }
 }

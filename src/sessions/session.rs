@@ -11,6 +11,25 @@ pub enum SessionStatus {
     Closed,
 }
 
+impl SessionStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Suspended => "suspended",
+            Self::Closed => "closed",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "active" => Some(Self::Active),
+            "suspended" => Some(Self::Suspended),
+            "closed" => Some(Self::Closed),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionBudget {
     pub max_total_tokens: u64,
