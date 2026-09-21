@@ -1,7 +1,7 @@
 use aien_inference_abi::{ModelConfig, NativeTransformerBackend, TransformerWeights};
 
 #[test]
-fn test_openclaw_branch_client_2_8_32_fork_lifecycle() {
+fn test_aegis_branch_client_2_8_32_fork_lifecycle() {
     let config = ModelConfig {
         num_layers: 2,
         num_heads: 4,

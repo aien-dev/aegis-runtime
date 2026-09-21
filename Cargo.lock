@@ -3,6 +3,37 @@
 version = 4
 
 [[package]]
+name = "aegis"
+version = "0.2.0"
+dependencies = [
+ "aien-inference-abi",
+ "aien-kv-cache",
+ "aien-scheduler",
+ "anyhow",
+ "async-trait",
+ "axum",
+ "bytes",
+ "chrono",
+ "clap",
+ "futures-util",
+ "libloading",
+ "parking_lot",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "tower",
+ "tower-http 0.5.2",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -30,8 +61,10 @@ name = "aien-inference-abi"
 version = "0.1.0"
 dependencies = [
  "aien-kv-cache",
+ "aien-platform",
  "async-trait",
  "libloading",
+ "parking_lot",
  "rayon",
  "reqwest",
  "serde",
@@ -44,9 +77,24 @@ dependencies = [
 name = "aien-kv-cache"
 version = "0.1.0"
 dependencies = [
+ "aien-platform",
+ "aien-platform-linux",
  "libc",
  "parking_lot",
  "serde",
+]
+
+[[package]]
+name = "aien-platform"
+version = "0.1.0"
+
+[[package]]
+name = "aien-platform-linux"
+version = "0.1.0"
+dependencies = [
+ "aien-platform",
+ "libc",
+ "parking_lot",
 ]
 
 [[package]]
@@ -55,6 +103,7 @@ version = "0.1.0"
 dependencies = [
  "aien-inference-abi",
  "aien-kv-cache",
+ "aien-platform",
  "futures-util",
  "parking_lot",
  "reqwest",
@@ -1417,37 +1466,6 @@ checksum = "1e68317604e77e53b85896388e1a803c1d21b74c899ec9e5e1112db90735edd7"
 dependencies = [
  "cc",
  "pkg-config",
-]
-
-[[package]]
-name = "openclaw"
-version = "0.2.0"
-dependencies = [
- "aien-inference-abi",
- "aien-kv-cache",
- "aien-scheduler",
- "anyhow",
- "async-trait",
- "axum",
- "bytes",
- "chrono",
- "clap",
- "futures-util",
- "libloading",
- "parking_lot",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite",
- "tower",
- "tower-http 0.5.2",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

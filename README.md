@@ -1,4 +1,4 @@
-# openclaw-rs
+# aegis-runtime
 
 Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration kernels and local Modular MAX inference on NVIDIA Grace Blackwell GB10 hardware.
 
@@ -58,22 +58,22 @@ cargo build --release
 
 ### Running the Gateway
 ```bash
-./target/release/openclaw serve --bind 0.0.0.0:18096
+./target/release/aegis serve --bind 0.0.0.0:18096
 ```
 
 ### CLI Commands
 ```bash
 # Execute a single autonomous tick
-openclaw tick
+aegis tick
 
 # Query local MAX directly
-openclaw ask "Analyze system health and pending tasks"
+aegis ask "Analyze system health and pending tasks"
 
 # Check engine status
-openclaw status
+aegis status
 
 # Run SIMD kernel benchmark and mathematical verification
-openclaw sim-mojo
+aegis sim-mojo
 ```
 
 ## Mathematical Verification

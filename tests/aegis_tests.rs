@@ -1,12 +1,12 @@
+use aegis::{
+    create_router, AgentEngine, Database, GatewayState, HeartbeatEngine, HttpInferenceBackend,
+    MojoSimdBridge, SkillRegistry, VaultResolver, REDACTED_MARKER,
+};
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
 use futures_util::{SinkExt, StreamExt};
-use openclaw::{
-    create_router, AgentEngine, Database, GatewayState, HeartbeatEngine, HttpInferenceBackend,
-    MojoSimdBridge, SkillRegistry, VaultResolver, REDACTED_MARKER,
-};
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;
@@ -131,7 +131,7 @@ async fn test_gateway_health_endpoint() {
         .unwrap();
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["status"], "healthy");
-    assert_eq!(body["engine"], "openclaw-rs/0.2.0");
+    assert_eq!(body["engine"], "aegis-runtime/0.2.0");
     assert_eq!(body["database_mode"], "sqlite-wal");
     assert_eq!(body["zero_disk_secrets"], true);
 }
@@ -392,7 +392,7 @@ async fn test_gateway_websocket_lifecycle() {
     let msg = ws_stream.next().await.unwrap().unwrap();
     let val: Value = serde_json::from_str(&msg.to_string()).unwrap();
     assert_eq!(val["type"], "welcome");
-    assert_eq!(val["gateway"], "openclaw-rs");
+    assert_eq!(val["gateway"], "aegis-runtime");
 
     // 2. Ping / Pong
     ws_stream

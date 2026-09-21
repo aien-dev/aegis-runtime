@@ -7,13 +7,13 @@
 //! 5. AgentEngine integration using Arc<dyn InferenceEngine>.
 //! 6. Blackwell GPU device acceleration detection on Grace Blackwell GB10.
 
-use aien_inference_abi::ModelConfig;
-use futures_util::StreamExt;
-use openclaw::inference::{
+use aegis::inference::{
     format_messages_to_prompt, parse_structured_tool_calls, EmbeddedInferenceBackend,
     EmbeddedModel, InferenceEngine,
 };
-use openclaw::{AgentEngine, SkillExecutionRequest, SkillRegistry};
+use aegis::{AgentEngine, SkillExecutionRequest, SkillRegistry};
+use aien_inference_abi::ModelConfig;
+use futures_util::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -117,7 +117,7 @@ fn test_structured_tool_call_lifecycle_loop() {
     );
     let tool_output = exec_res.output;
     assert!(tool_output.contains("[package]"));
-    assert!(tool_output.contains(r#"name = "openclaw""#));
+    assert!(tool_output.contains(r#"name = "aegis""#));
 
     // 5. Subsequent conversational turn incorporates tool result
     let multi_turn_messages = vec![
@@ -139,7 +139,7 @@ fn test_structured_tool_call_lifecycle_loop() {
 
     let second_turn_prompt = format_messages_to_prompt(&multi_turn_messages, Some(&tools));
     assert!(second_turn_prompt.contains("[Tool Output]:"));
-    assert!(second_turn_prompt.contains(r#"name = "openclaw""#));
+    assert!(second_turn_prompt.contains(r#"name = "aegis""#));
     assert!(second_turn_prompt.ends_with("<|assistant|>\n"));
 }
 
@@ -250,12 +250,12 @@ async fn test_embedded_inference_chat_streaming() {
 
 #[tokio::test]
 async fn test_gateway_with_embedded_inference_streaming() {
+    use aegis::create_router;
+    use aegis::heartbeat::HeartbeatEngine;
+    use aegis::persistence::Database;
+    use aegis::GatewayState;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use openclaw::create_router;
-    use openclaw::heartbeat::HeartbeatEngine;
-    use openclaw::persistence::Database;
-    use openclaw::GatewayState;
     use tower::ServiceExt;
 
     let config = ModelConfig {

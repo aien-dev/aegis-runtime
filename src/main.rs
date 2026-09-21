@@ -1,8 +1,8 @@
-use clap::{Parser, Subcommand};
-use openclaw::{
+use aegis::{
     start_gateway, AgentEngine, Database, EmbeddedInferenceBackend, GatewayState, HeartbeatEngine,
     HttpInferenceBackend, InferenceEngine, MojoSimdBridge, SkillRegistry,
 };
+use clap::{Parser, Subcommand};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
@@ -10,9 +10,9 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser)]
-#[command(name = "openclaw")]
+#[command(name = "aegis")]
 #[command(version = "0.2.0")]
-#[command(about = "Native sovereign agent runtime in Rust, Mojo, and NativeTransformer", long_about = None)]
+#[command(about = "Sovereign Agent Runtime on Grace Blackwell GB10", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
