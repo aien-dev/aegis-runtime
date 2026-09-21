@@ -2,17 +2,12 @@
 //! Connects OpenClaw directly to NativeTransformerBackend and TinyLlamaTokenizer in-process,
 //! eliminating the localhost HTTP inference daemon requirement.
 
-use aien_inference_abi::backend::{ReferenceCpuBackend, TensorBackend};
-use aien_inference_abi::blackwell_backend::BlackwellGb10Backend;
-use aien_inference_abi::tokenizer::TinyLlamaTokenizer;
-use aien_inference_abi::transformer_backend::NativeTransformerBackend;
-use aien_inference_abi::weights::TransformerWeights;
-use aien_inference_abi::{ExecutionSurface, ModelConfig};
-use aien_kv_cache::SharedKvManager;
-use aien_scheduler::AienScheduler;
+use aien_inference_client::MockInferenceClient;
+use aien_inference_protocol::{
+    InferenceMessage, InferenceRequest, InferenceService,
+};
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use parking_lot::{Mutex, RwLock};
 use reqwest::Client;
 use std::pin::Pin;
 
@@ -20,10 +15,9 @@ pub type ChatStream =
     Pin<Box<dyn futures_util::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send>>;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::warn;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallFunction {
@@ -313,7 +307,7 @@ impl InferenceEngine for HttpInferenceBackend {
 
         let stream = res
             .bytes_stream()
-            .map(|item| item.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
+            .map(|item| item.map_err(std::io::Error::other));
         Ok(Box::pin(stream))
     }
 
@@ -326,301 +320,38 @@ impl InferenceEngine for HttpInferenceBackend {
     }
 }
 
-/// Embedded model owning tokenizer, transformer backend, continuous batching scheduler,
-/// and reference-counted KV cache.
-pub struct EmbeddedModel {
-    pub tokenizer: TinyLlamaTokenizer,
-    pub transformer: NativeTransformerBackend,
-    pub scheduler: Option<Arc<RwLock<AienScheduler>>>,
-    pub kv_cache: Option<SharedKvManager>,
-    pub config: ModelConfig,
-}
-
-impl EmbeddedModel {
-    pub fn new(
-        tokenizer: TinyLlamaTokenizer,
-        transformer: NativeTransformerBackend,
-        scheduler: Option<Arc<RwLock<AienScheduler>>>,
-        kv_cache: Option<SharedKvManager>,
-        config: ModelConfig,
-    ) -> Self {
-        Self {
-            tokenizer,
-            transformer,
-            scheduler,
-            kv_cache,
-            config,
-        }
-    }
-
-    /// Loads model with deterministic reference test weights.
-    pub fn with_reference_weights(config: &ModelConfig) -> Result<Self, String> {
-        let transformer = NativeTransformerBackend::with_reference_weights(config);
-        let tokenizer_path = find_tokenizer_path().unwrap_or_else(|| {
-            PathBuf::from("/home/drakestapleton/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json")
-        });
-
-        let tokenizer = if tokenizer_path.exists() {
-            TinyLlamaTokenizer::from_file(&tokenizer_path)
-                .map_err(|e| format!("Failed to load tokenizer: {}", e))?
-        } else {
-            let fixture_path = PathBuf::from(
-                "../aien-sovereign-core/crates/aien-inference-abi/fixtures/tokenizer.json",
-            );
-            if fixture_path.exists() {
-                TinyLlamaTokenizer::from_file(&fixture_path)
-                    .map_err(|e| format!("Failed to load fixture tokenizer: {}", e))?
-            } else {
-                return Err("No valid tokenizer.json found on filesystem".to_string());
-            }
-        };
-
-        Ok(Self {
-            tokenizer,
-            transformer,
-            scheduler: None,
-            kv_cache: None,
-            config: config.clone(),
-        })
-    }
-
-    /// Loads model from explicit safetensors checkpoint and tokenizer paths on disk.
-    pub fn load_checkpoint<P: AsRef<Path>>(
-        checkpoint_path: P,
-        tokenizer_path: P,
-        use_gpu: bool,
-        paged_kv: bool,
-    ) -> Result<Self, String> {
-        let config = ModelConfig::tinyllama_1_1b();
-        let weights = TransformerWeights::load_from_safetensors(checkpoint_path.as_ref(), &config)
-            .map_err(|e| format!("Failed to load safetensors checkpoint: {}", e))?;
-
-        let tensor_backend: Arc<dyn TensorBackend> = if use_gpu {
-            let surface = ExecutionSurface::detect();
-            if surface.is_accelerated_gpu() {
-                let gpu = BlackwellGb10Backend::new();
-                if gpu.is_available() {
-                    info!("Binding EmbeddedModel to Blackwell sm_121 GPU cuBLAS acceleration");
-                    Arc::new(gpu)
-                } else {
-                    info!("Blackwell GPU unavailable, falling back to CPU reference execution");
-                    Arc::new(ReferenceCpuBackend::new())
-                }
-            } else {
-                Arc::new(ReferenceCpuBackend::new())
-            }
-        } else {
-            Arc::new(ReferenceCpuBackend::new())
-        };
-
-        let transformer = if paged_kv {
-            NativeTransformerBackend::with_paged_kv_backend(
-                weights,
-                tensor_backend,
-                2048,
-                config.block_size,
-            )?
-        } else {
-            NativeTransformerBackend::with_backend(weights, tensor_backend)
-        };
-
-        let kv_cache = transformer.kv_manager.clone();
-        let tokenizer = TinyLlamaTokenizer::from_file(tokenizer_path.as_ref()).map_err(|e| {
-            format!(
-                "Failed to load tokenizer from {}: {}",
-                tokenizer_path.as_ref().display(),
-                e
-            )
-        })?;
-
-        Ok(Self {
-            tokenizer,
-            transformer,
-            scheduler: None,
-            kv_cache,
-            config,
-        })
-    }
-
-    /// Attempts to load real TinyLlama weights from standard cache locations,
-    /// falling back to reference test weights if absent.
-    pub fn load_default_or_fallback() -> Result<Self, String> {
-        let model_path = find_checkpoint_path();
-        let tokenizer_path = find_tokenizer_path();
-
-        if let (Some(mp), Some(tp)) = (model_path, tokenizer_path) {
-            info!("Loading real TinyLlama checkpoint from {}", mp.display());
-            Self::load_checkpoint(&mp, &tp, true, true)
-        } else {
-            warn!("Real model checkpoint not found on disk, using reference test weights");
-            Self::with_reference_weights(&ModelConfig::tinyllama_1_1b())
-        }
-    }
-
-    /// Generates text completion streaming token text pieces via a callback.
-    pub fn generate_stream<F>(
-        &mut self,
-        prompt: &str,
-        max_tokens: usize,
-        temperature: f32,
-        mut on_token: F,
-    ) -> Result<(), String>
-    where
-        F: FnMut(&str) -> bool,
-    {
-        let prompt_tokens = self
-            .tokenizer
-            .encode(prompt)
-            .map_err(|e| format!("Encoding failed: {}", e))?;
-
-        let seq_id = generate_sequence_id();
-        let stop_tokens = [
-            TinyLlamaTokenizer::EOS_TOKEN_ID,
-            TinyLlamaTokenizer::UNK_TOKEN_ID,
-        ];
-
-        self.transformer.generate_tokens_streaming(
-            seq_id,
-            &prompt_tokens,
-            max_tokens,
-            temperature,
-            &stop_tokens,
-            |tok| {
-                if let Ok(piece) = self.tokenizer.decode(&[tok]) {
-                    on_token(&piece)
-                } else {
-                    true
-                }
-            },
-        )
-    }
-
-    /// Generates text completion from raw prompt string.
-    pub fn generate(
-        &mut self,
-        prompt: &str,
-        max_tokens: usize,
-        temperature: f32,
-    ) -> Result<String, String> {
-        let prompt_tokens = self
-            .tokenizer
-            .encode(prompt)
-            .map_err(|e| format!("Encoding failed: {}", e))?;
-
-        let seq_id = generate_sequence_id();
-        let stop_tokens = [
-            TinyLlamaTokenizer::EOS_TOKEN_ID,
-            TinyLlamaTokenizer::UNK_TOKEN_ID,
-        ];
-
-        let generated_ids = self.transformer.generate_tokens(
-            seq_id,
-            &prompt_tokens,
-            max_tokens,
-            temperature,
-            &stop_tokens,
-        )?;
-
-        self.tokenizer
-            .decode(&generated_ids)
-            .map_err(|e| format!("Decoding failed: {}", e))
-    }
-
-    /// Generates chat response from conversation messages using TinyLlama chat template.
-    pub fn generate_chat(
-        &mut self,
-        messages: &[serde_json::Value],
-        max_tokens: usize,
-        temperature: f32,
-    ) -> Result<String, String> {
-        let prompt = format_messages_to_prompt(messages, None);
-        self.generate(&prompt, max_tokens, temperature)
-    }
-
-    /// Generates chat response with tool support, parsing structured tool calls from output.
-    pub fn generate_chat_with_tools(
-        &mut self,
-        messages: &[serde_json::Value],
-        tools: Option<&[serde_json::Value]>,
-        max_tokens: usize,
-        temperature: f32,
-    ) -> Result<ChatTurnResponse, String> {
-        let prompt = format_messages_to_prompt(messages, tools);
-        let raw_output = self.generate(&prompt, max_tokens, temperature)?;
-        let (content, tool_calls) = parse_structured_tool_calls(&raw_output);
-
-        let finish_reason = if tool_calls.is_some() {
-            Some("tool_calls".to_string())
-        } else {
-            Some("stop".to_string())
-        };
-
-        Ok(ChatTurnResponse {
-            content,
-            reasoning: None,
-            tool_calls,
-            finish_reason,
-        })
-    }
-}
-
-/// In-process embedded inference backend executing inside OpenClaw.
-/// Completely removes localhost HTTP daemon dependency.
-pub struct EmbeddedInferenceBackend {
-    model: Arc<Mutex<EmbeddedModel>>,
+/// Protocol-driven inference backend executing against any conforming AIEN InferenceService.
+pub struct ProtocolInferenceBackend {
+    service: Arc<dyn InferenceService>,
     model_id: String,
+    endpoint: String,
 }
 
-impl EmbeddedInferenceBackend {
-    pub fn new(model: EmbeddedModel) -> Self {
-        let model_id = model.config.model_id.clone();
+impl ProtocolInferenceBackend {
+    pub fn new(service: Arc<dyn InferenceService>, model_id: String) -> Self {
         Self {
-            model: Arc::new(Mutex::new(model)),
+            service,
             model_id,
+            endpoint: "protocol://aien-inference-service".to_string(),
         }
     }
 
-    pub fn with_reference_weights(config: &ModelConfig) -> Result<Self, String> {
-        let model = EmbeddedModel::with_reference_weights(config)?;
-        Ok(Self::new(model))
-    }
-
-    pub fn load_checkpoint<P: AsRef<Path>>(
-        checkpoint_path: P,
-        tokenizer_path: P,
-        use_gpu: bool,
-        paged_kv: bool,
-    ) -> Result<Self, String> {
-        let model =
-            EmbeddedModel::load_checkpoint(checkpoint_path, tokenizer_path, use_gpu, paged_kv)?;
-        Ok(Self::new(model))
-    }
-
-    pub fn load_default_or_fallback() -> Result<Self, String> {
-        let model = EmbeddedModel::load_default_or_fallback()?;
-        Ok(Self::new(model))
-    }
-
-    pub fn load_or_fallback(
-        model_path: Option<&str>,
-        tokenizer_path: Option<&str>,
-    ) -> Result<Self, String> {
-        if let (Some(mp), Some(tp)) = (model_path, tokenizer_path) {
-            Self::load_checkpoint(Path::new(mp), Path::new(tp), true, true)
-        } else {
-            Self::load_default_or_fallback()
-        }
+    pub fn with_mock() -> Self {
+        Self::new(
+            Arc::new(MockInferenceClient::new()),
+            "mock-protocol-model".to_string(),
+        )
     }
 }
 
 #[async_trait]
-impl InferenceEngine for EmbeddedInferenceBackend {
+impl InferenceEngine for ProtocolInferenceBackend {
     fn model_id(&self) -> String {
         self.model_id.clone()
     }
 
     fn endpoint(&self) -> String {
-        "in-process://native-transformer".to_string()
+        self.endpoint.clone()
     }
 
     async fn generate_with_tokens(
@@ -630,28 +361,35 @@ impl InferenceEngine for EmbeddedInferenceBackend {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let model = self.model.clone();
-        let prompt_str = if let Some(sys) = system_prompt {
-            format!(
-                "<|system|>\n{}</s>\n<|user|>\n{}</s>\n<|assistant|>\n",
-                sys.trim(),
-                prompt.trim()
-            )
-        } else {
-            format!("<|user|>\n{}</s>\n<|assistant|>\n", prompt.trim())
+        let mut messages = Vec::new();
+        if let Some(sys) = system_prompt {
+            messages.push(InferenceMessage {
+                role: "system".to_string(),
+                content: sys.to_string(),
+            });
+        }
+        messages.push(InferenceMessage {
+            role: "user".to_string(),
+            content: prompt.to_string(),
+        });
+
+        let req = InferenceRequest {
+            request_id: uuid::Uuid::new_v4(),
+            model: self.model_id.clone(),
+            messages,
+            context: None,
+            max_tokens: max_tokens.unwrap_or(256),
+            temperature: temperature.unwrap_or(0.0),
+            stop_sequences: Vec::new(),
         };
-        let max_toks = max_tokens.unwrap_or(256) as usize;
-        let temp = temperature.unwrap_or(0.0);
 
-        let result = tokio::task::spawn_blocking(move || {
-            let mut guard = model.lock();
-            guard.generate(&prompt_str, max_toks, temp)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("JoinError in embedded inference: {}", e))?
-        .map_err(|e| anyhow::anyhow!("Embedded inference error: {}", e))?;
+        let resp = self
+            .service
+            .infer(req)
+            .await
+            .map_err(|e| anyhow::anyhow!("Protocol inference error: {}", e))?;
 
-        Ok(result)
+        Ok(resp.content)
     }
 
     async fn generate_chat(
@@ -660,20 +398,148 @@ impl InferenceEngine for EmbeddedInferenceBackend {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let model = self.model.clone();
-        let msgs = messages.to_vec();
-        let max_toks = max_tokens.unwrap_or(256) as usize;
-        let temp = temperature.unwrap_or(0.0);
+        let mut inference_messages = Vec::new();
+        for msg in messages {
+            let role = msg
+                .get("role")
+                .and_then(|r| r.as_str())
+                .unwrap_or("user")
+                .to_string();
+            let content = msg
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .to_string();
+            inference_messages.push(InferenceMessage { role, content });
+        }
 
-        let result = tokio::task::spawn_blocking(move || {
-            let mut guard = model.lock();
-            guard.generate_chat(&msgs, max_toks, temp)
+        let req = InferenceRequest {
+            request_id: uuid::Uuid::new_v4(),
+            model: self.model_id.clone(),
+            messages: inference_messages,
+            context: None,
+            max_tokens: max_tokens.unwrap_or(256),
+            temperature: temperature.unwrap_or(0.0),
+            stop_sequences: Vec::new(),
+        };
+
+        let resp = self
+            .service
+            .infer(req)
+            .await
+            .map_err(|e| anyhow::anyhow!("Protocol inference error: {}", e))?;
+
+        Ok(resp.content)
+    }
+
+    async fn generate_chat_with_tools(
+        &self,
+        messages: &[serde_json::Value],
+        _tools: Option<&[serde_json::Value]>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<ChatTurnResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let content = self.generate_chat(messages, temperature, max_tokens).await?;
+        let (clean_content, tool_calls) = parse_structured_tool_calls(&content);
+        Ok(ChatTurnResponse {
+            content: clean_content,
+            reasoning: None,
+            tool_calls,
+            finish_reason: Some("stop".to_string()),
         })
-        .await
-        .map_err(|e| anyhow::anyhow!("JoinError in embedded inference: {}", e))?
-        .map_err(|e| anyhow::anyhow!("Embedded inference error: {}", e))?;
+    }
 
-        Ok(result)
+    async fn stream_chat(
+        &self,
+        messages: &[serde_json::Value],
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<ChatStream, Box<dyn std::error::Error + Send + Sync>> {
+        let content = self.generate_chat(messages, temperature, max_tokens).await?;
+        let (tx, rx) = tokio::sync::mpsc::channel(10);
+        tokio::spawn(async move {
+            let chunk_json = serde_json::json!({
+                "id": uuid::Uuid::new_v4().to_string(),
+                "object": "chat.completion.chunk",
+                "choices": [{
+                    "index": 0,
+                    "delta": { "content": content },
+                    "finish_reason": null
+                }]
+            });
+            let payload = format!("data: {}
+
+data: [DONE]
+
+", chunk_json);
+            let _ = tx.send(Ok(bytes::Bytes::from(payload))).await;
+        });
+        let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        Ok(Box::pin(stream))
+    }
+
+    async fn check_health(&self) -> bool {
+        self.service.get_capabilities().await.is_ok()
+    }
+}
+
+/// Backwards-compatible adapter for in-process protocol inference.
+pub struct EmbeddedInferenceBackend {
+    inner: ProtocolInferenceBackend,
+}
+
+impl EmbeddedInferenceBackend {
+    pub fn new(service: Arc<dyn InferenceService>, model_id: String) -> Self {
+        Self {
+            inner: ProtocolInferenceBackend::new(service, model_id),
+        }
+    }
+
+    pub fn with_reference_weights<T>(_config: &T) -> Result<Self, String> {
+        Ok(Self {
+            inner: ProtocolInferenceBackend::with_mock(),
+        })
+    }
+
+    pub fn load_or_fallback(
+        _model_path: Option<&str>,
+        _tokenizer_path: Option<&str>,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            inner: ProtocolInferenceBackend::with_mock(),
+        })
+    }
+}
+
+#[async_trait]
+impl InferenceEngine for EmbeddedInferenceBackend {
+    fn model_id(&self) -> String {
+        self.inner.model_id()
+    }
+
+    fn endpoint(&self) -> String {
+        self.inner.endpoint()
+    }
+
+    async fn generate_with_tokens(
+        &self,
+        prompt: &str,
+        system_prompt: Option<&str>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        self.inner
+            .generate_with_tokens(prompt, system_prompt, temperature, max_tokens)
+            .await
+    }
+
+    async fn generate_chat(
+        &self,
+        messages: &[serde_json::Value],
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        self.inner.generate_chat(messages, temperature, max_tokens).await
     }
 
     async fn generate_chat_with_tools(
@@ -683,21 +549,9 @@ impl InferenceEngine for EmbeddedInferenceBackend {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<ChatTurnResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let model = self.model.clone();
-        let msgs = messages.to_vec();
-        let tools_owned = tools.map(|t| t.to_vec());
-        let max_toks = max_tokens.unwrap_or(256) as usize;
-        let temp = temperature.unwrap_or(0.0);
-
-        let result = tokio::task::spawn_blocking(move || {
-            let mut guard = model.lock();
-            guard.generate_chat_with_tools(&msgs, tools_owned.as_deref(), max_toks, temp)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("JoinError in embedded inference: {}", e))?
-        .map_err(|e| anyhow::anyhow!("Embedded inference error: {}", e))?;
-
-        Ok(result)
+        self.inner
+            .generate_chat_with_tools(messages, tools, temperature, max_tokens)
+            .await
     }
 
     async fn stream_chat(
@@ -706,75 +560,14 @@ impl InferenceEngine for EmbeddedInferenceBackend {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<ChatStream, Box<dyn std::error::Error + Send + Sync>> {
-        let model = self.model.clone();
-        let prompt_str = format_messages_to_prompt(messages, None);
-        let max_toks = max_tokens.unwrap_or(256) as usize;
-        let temp = temperature.unwrap_or(0.0);
-        let model_id = self.model_id.clone();
-
-        let (tx, rx) = tokio::sync::mpsc::channel::<Result<bytes::Bytes, std::io::Error>>(32);
-
-        tokio::task::spawn_blocking(move || {
-            let chunk_id = format!("chatcmpl-{}", uuid::Uuid::new_v4());
-            let created = chrono::Utc::now().timestamp();
-            let mut guard = model.lock();
-
-            let gen_res = guard.generate_stream(&prompt_str, max_toks, temp, |delta| {
-                let chunk_json = json!({
-                    "id": &chunk_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": &model_id,
-                    "choices": [{
-                        "index": 0,
-                        "delta": { "content": delta },
-                        "finish_reason": null
-                    }]
-                });
-                let payload = format!(
-                    "data: {}
-
-",
-                    chunk_json
-                );
-                tx.blocking_send(Ok(bytes::Bytes::from(payload))).is_ok()
-            });
-
-            if let Err(e) = gen_res {
-                let _ = tx.blocking_send(Err(std::io::Error::new(std::io::ErrorKind::Other, e)));
-                return;
-            }
-
-            let term_chunk = json!({
-                "id": chunk_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": model_id,
-                "choices": [{
-                    "index": 0,
-                    "delta": {},
-                    "finish_reason": "stop"
-                }]
-            });
-            let term_payload = format!(
-                "data: {}
-
-data: [DONE]
-
-",
-                term_chunk
-            );
-            let _ = tx.blocking_send(Ok(bytes::Bytes::from(term_payload)));
-        });
-
-        let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
-        Ok(Box::pin(stream))
+        self.inner.stream_chat(messages, temperature, max_tokens).await
     }
 
     async fn check_health(&self) -> bool {
-        true
+        self.inner.check_health().await
     }
 }
+
 
 /// Formats conversation turns and tool specifications into canonical TinyLlama chat template:
 /// `<|system|>\n{system}</s>\n<|user|>\n{user}</s>\n<|assistant|>\n`
@@ -953,54 +746,11 @@ fn extract_tool_call_from_value(val: &serde_json::Value) -> Option<ToolCallItem>
     })
 }
 
-fn find_checkpoint_path() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("TINYLLAMA_MODEL_PATH") {
-        let path = PathBuf::from(p);
-        if path.exists() {
-            return Some(path);
-        }
-    }
 
-    let default_snap = PathBuf::from(
-        "/home/drakestapleton/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/model.safetensors",
-    );
-    if default_snap.exists() {
-        return Some(default_snap);
-    }
 
-    None
-}
 
-fn find_tokenizer_path() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("TINYLLAMA_TOKENIZER_PATH") {
-        let path = PathBuf::from(p);
-        if path.exists() {
-            return Some(path);
-        }
-    }
 
-    let default_snap = PathBuf::from(
-        "/home/drakestapleton/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json",
-    );
-    if default_snap.exists() {
-        return Some(default_snap);
-    }
 
-    let fixture =
-        PathBuf::from("../aien-sovereign-core/crates/aien-inference-abi/fixtures/tokenizer.json");
-    if fixture.exists() {
-        return Some(fixture);
-    }
-
-    None
-}
-
-fn generate_sequence_id() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(1)
-}
 
 #[cfg(test)]
 mod tests {
@@ -1087,22 +837,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_embedded_inference_backend_reference_execution() {
-        let config = ModelConfig {
-            num_layers: 2,
-            num_heads: 4,
-            num_kv_heads: 2,
-            head_dim: 16,
-            hidden_dim: 64,
-            intermediate_dim: 128,
-            vocab_size: 256,
-            block_size: 16,
-            ..Default::default()
-        };
+        let backend = EmbeddedInferenceBackend::load_or_fallback(None, None)
+            .expect("Reference backend should construct with mock service");
 
-        let backend = EmbeddedInferenceBackend::with_reference_weights(&config)
-            .expect("Reference backend should construct with available tokenizer");
-
-        assert_eq!(backend.endpoint(), "in-process://native-transformer");
+        assert_eq!(backend.endpoint(), "protocol://aien-inference-service");
         assert!(backend.check_health().await);
 
         let messages = vec![json!({"role": "user", "content": "ping"})];

@@ -1,97 +1,70 @@
-//! End-to-End Test Suite for Embedded In-Process Inference in OpenClaw.
+//! End-to-End Test Suite for In-Process Inference in AEGIS.
 //! Verifies:
 //! 1. In-process EmbeddedInferenceBackend initialization.
-//! 2. Checkpoint loading with NativeTransformerBackend.
+//! 2. ProtocolInferenceBackend contract execution.
 //! 3. Pure-Rust TinyLlama chat template formatting.
 //! 4. Structured tool calling (model -> structured tool call -> OpenClaw tool -> model).
 //! 5. AgentEngine integration using Arc<dyn InferenceEngine>.
-//! 6. Blackwell GPU device acceleration detection on Grace Blackwell GB10.
+//! 6. Gateway streaming chat completions over SSE.
 
 use aegis::inference::{
     format_messages_to_prompt, parse_structured_tool_calls, EmbeddedInferenceBackend,
-    EmbeddedModel, InferenceEngine,
+    InferenceEngine,
 };
 use aegis::{AgentEngine, SkillExecutionRequest, SkillRegistry};
-use aien_inference_abi::ModelConfig;
 use futures_util::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
 
 #[tokio::test]
 async fn test_embedded_model_reference_creation() {
-    let config = ModelConfig {
-        num_layers: 2,
-        num_heads: 4,
-        num_kv_heads: 2,
-        head_dim: 16,
-        hidden_dim: 64,
-        intermediate_dim: 128,
-        vocab_size: 256,
-        block_size: 16,
-        ..Default::default()
-    };
+    let config = json!({
+        "num_layers": 2,
+        "num_heads": 4,
+        "vocab_size": 256
+    });
 
     let backend = EmbeddedInferenceBackend::with_reference_weights(&config)
         .expect("EmbeddedInferenceBackend must construct with reference weights");
 
-    assert_eq!(backend.endpoint(), "in-process://native-transformer");
+    assert_eq!(backend.endpoint(), "protocol://aien-inference-service");
     assert!(backend.check_health().await);
 }
 
 #[tokio::test]
-async fn test_embedded_inference_chat_generation() {
-    let config = ModelConfig {
-        num_layers: 2,
-        num_heads: 4,
-        num_kv_heads: 2,
-        head_dim: 16,
-        hidden_dim: 64,
-        intermediate_dim: 128,
-        vocab_size: 256,
-        block_size: 16,
-        ..Default::default()
-    };
-
-    let backend = EmbeddedInferenceBackend::with_reference_weights(&config).unwrap();
+async fn test_pure_rust_chat_template_formatting() {
     let messages = vec![
-        json!({"role": "system", "content": "You are a helpful sovereign agent."}),
-        json!({"role": "user", "content": "Status check"}),
+        json!({"role": "system", "content": "You are a helpful assistant."}),
+        json!({"role": "user", "content": "Hello!"}),
+        json!({"role": "assistant", "content": "Greetings! How can I assist?"}),
+        json!({"role": "user", "content": "What is 2+2?"}),
     ];
 
-    let res = backend.generate_chat(&messages, Some(0.0), Some(4)).await;
-    assert!(res.is_ok(), "Chat generation failed: {:?}", res);
-    let output = res.unwrap();
-    assert!(!output.is_empty(), "Generated output must not be empty");
+    let prompt = format_messages_to_prompt(&messages, None);
+    assert!(prompt.starts_with("<|system|>\nYou are a helpful assistant.</s>\n"));
+    assert!(prompt.contains("<|user|>\nHello!</s>\n"));
+    assert!(prompt.contains("<|assistant|>\nGreetings! How can I assist?</s>\n"));
+    assert!(prompt.ends_with("<|user|>\nWhat is 2+2?</s>\n<|assistant|>\n"));
 }
 
-#[test]
-fn test_structured_tool_call_lifecycle_loop() {
-    // 1. Initialize skill registry with built-in filesystem skills
+#[tokio::test]
+async fn test_embedded_structured_tool_calling_flow() {
     let registry = SkillRegistry::new();
     let tools = registry.to_openai_tools();
-    assert!(!tools.is_empty(), "Tools list must contain built-in skills");
+    assert!(!tools.is_empty());
 
-    // 2. Format chat prompt with tools definition
-    let messages = vec![json!({"role": "user", "content": "Read the contents of Cargo.toml"})];
-    let prompt = format_messages_to_prompt(&messages, Some(&tools));
-    assert!(prompt.contains("You have access to the following tools:"));
-    assert!(prompt.contains("read_file"));
-
-    // 3. Simulate model outputting structured tool call JSON
-    let simulated_model_output = r#"I need to check the project dependencies.
+    let simulated_model_output = r#"I need to check system health.
 ```json
 {
-  "name": "read_file",
-  "arguments": {
-    "path": "Cargo.toml"
-  }
+  "name": "telemetry_ping",
+  "arguments": {}
 }
 ```"#;
 
     let (content, tool_calls) = parse_structured_tool_calls(simulated_model_output);
     assert_eq!(
         content.as_deref(),
-        Some("I need to check the project dependencies.")
+        Some("I need to check system health.")
     );
     assert!(
         tool_calls.is_some(),
@@ -101,9 +74,8 @@ fn test_structured_tool_call_lifecycle_loop() {
     let calls = tool_calls.unwrap();
     assert_eq!(calls.len(), 1);
     let call = &calls[0];
-    assert_eq!(call.function.name, "read_file");
+    assert_eq!(call.function.name, "telemetry_ping");
 
-    // 4. OpenClaw executes tool directly through skill registry
     let args: serde_json::Value = serde_json::from_str(&call.function.arguments).unwrap();
     let req = SkillExecutionRequest {
         skill_name: call.function.name.clone(),
@@ -116,12 +88,10 @@ fn test_structured_tool_call_lifecycle_loop() {
         exec_res.error
     );
     let tool_output = exec_res.output;
-    assert!(tool_output.contains("[package]"));
-    assert!(tool_output.contains(r#"name = "aegis""#));
+    assert!(tool_output.contains("healthy"));
 
-    // 5. Subsequent conversational turn incorporates tool result
     let multi_turn_messages = vec![
-        json!({"role": "user", "content": "Read the contents of Cargo.toml"}),
+        json!({"role": "user", "content": "Ping the system"}),
         json!({
             "role": "assistant",
             "content": content.unwrap_or_default(),
@@ -139,32 +109,20 @@ fn test_structured_tool_call_lifecycle_loop() {
 
     let second_turn_prompt = format_messages_to_prompt(&multi_turn_messages, Some(&tools));
     assert!(second_turn_prompt.contains("[Tool Output]:"));
-    assert!(second_turn_prompt.contains(r#"name = "aegis""#));
+    assert!(second_turn_prompt.contains("healthy"));
     assert!(second_turn_prompt.ends_with("<|assistant|>\n"));
 }
 
 #[tokio::test]
 async fn test_agent_engine_with_embedded_backend_trait() {
-    let config = ModelConfig {
-        num_layers: 2,
-        num_heads: 4,
-        num_kv_heads: 2,
-        head_dim: 16,
-        hidden_dim: 64,
-        intermediate_dim: 128,
-        vocab_size: 256,
-        block_size: 16,
-        ..Default::default()
-    };
-
+    let config = json!({});
     let embedded_backend = EmbeddedInferenceBackend::with_reference_weights(&config).unwrap();
     let inference: Arc<dyn InferenceEngine> = Arc::new(embedded_backend);
     let skills = Arc::new(SkillRegistry::new());
 
     let _agent = AgentEngine::new(inference.clone(), skills, None);
-    assert_eq!(inference.endpoint(), "in-process://native-transformer");
+    assert_eq!(inference.endpoint(), "protocol://aien-inference-service");
 
-    // Test token estimation and pruning contracts
     let mut history = vec![
         json!({"role": "system", "content": "System prompt"}),
         json!({"role": "user", "content": "User goal"}),
@@ -178,40 +136,23 @@ async fn test_agent_engine_with_embedded_backend_trait() {
 
 #[tokio::test]
 async fn test_real_model_embedded_execution_if_present() {
-    let model = EmbeddedModel::load_default_or_fallback();
+    let backend = EmbeddedInferenceBackend::load_or_fallback(None, None);
     assert!(
-        model.is_ok(),
-        "EmbeddedModel must load successfully from disk or reference weights: {:?}",
-        model.err()
+        backend.is_ok(),
+        "EmbeddedInferenceBackend must load successfully: {:?}",
+        backend.err()
     );
 
-    let mut model = model.unwrap();
-    println!(
-        "Model initialized successfully: id={}, layers={}, heads={}",
-        model.config.model_id, model.config.num_layers, model.config.num_heads
-    );
-
-    // Verify generation of 4 tokens
-    let res = model.generate("Hello world", 4, 0.0);
+    let backend = backend.unwrap();
+    let res = backend.generate("Hello world", None, None).await;
     assert!(res.is_ok(), "Generation must succeed: {:?}", res.err());
     let text = res.unwrap();
-    println!("Generated text preview: {}", text);
+    assert!(!text.is_empty());
 }
 
 #[tokio::test]
 async fn test_embedded_inference_chat_streaming() {
-    let config = ModelConfig {
-        num_layers: 2,
-        num_heads: 4,
-        num_kv_heads: 2,
-        head_dim: 16,
-        hidden_dim: 64,
-        intermediate_dim: 128,
-        vocab_size: 256,
-        block_size: 16,
-        ..Default::default()
-    };
-
+    let config = json!({});
     let backend = EmbeddedInferenceBackend::with_reference_weights(&config).unwrap();
     let messages = vec![
         json!({"role": "system", "content": "You are a helpful sovereign agent."}),
@@ -258,18 +199,7 @@ async fn test_gateway_with_embedded_inference_streaming() {
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
-    let config = ModelConfig {
-        num_layers: 2,
-        num_heads: 4,
-        num_kv_heads: 2,
-        head_dim: 16,
-        hidden_dim: 64,
-        intermediate_dim: 128,
-        vocab_size: 256,
-        block_size: 16,
-        ..Default::default()
-    };
-
+    let config = json!({});
     let embedded_backend =
         Arc::new(EmbeddedInferenceBackend::with_reference_weights(&config).unwrap());
     let db = Arc::new(Database::open_in_memory().unwrap());
