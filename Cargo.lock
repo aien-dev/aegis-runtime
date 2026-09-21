@@ -30,8 +30,10 @@ name = "aien-inference-abi"
 version = "0.1.0"
 dependencies = [
  "aien-kv-cache",
+ "aien-platform",
  "async-trait",
  "libloading",
+ "parking_lot",
  "rayon",
  "reqwest",
  "serde",
@@ -44,9 +46,24 @@ dependencies = [
 name = "aien-kv-cache"
 version = "0.1.0"
 dependencies = [
+ "aien-platform",
+ "aien-platform-linux",
  "libc",
  "parking_lot",
  "serde",
+]
+
+[[package]]
+name = "aien-platform"
+version = "0.1.0"
+
+[[package]]
+name = "aien-platform-linux"
+version = "0.1.0"
+dependencies = [
+ "aien-platform",
+ "libc",
+ "parking_lot",
 ]
 
 [[package]]
@@ -55,6 +72,7 @@ version = "0.1.0"
 dependencies = [
  "aien-inference-abi",
  "aien-kv-cache",
+ "aien-platform",
  "futures-util",
  "parking_lot",
  "reqwest",
