@@ -15,30 +15,62 @@ jobs:
     name: Test & Invariant Verification
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout OpenClaw
+      - name: Checkout Aegis Runtime Source
         uses: actions/checkout@v4
         with:
-          path: openclaw-rs
+          path: aegis-runtime
 
-      - name: Checkout AIEN Sovereign Core Dependencies
+      - name: Checkout AIEN Protocols Dependency
+        uses: actions/checkout@v4
+        with:
+          repository: aien-dev/aien-protocols
+          path: aien-protocols
+
+      - name: Checkout AIEN Sovereign Core Dependency
         uses: actions/checkout@v4
         with:
           repository: aien-dev/aien-sovereign-core
           path: aien-sovereign-core
 
-      - name: Install Rust Toolchain
+      - name: Install Stable Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
       - name: Verify Code Formatting
-        working-directory: openclaw-rs
+        working-directory: aegis-runtime
         run: cargo fmt --all -- --check
 
       - name: Cargo Check
-        working-directory: openclaw-rs
+        working-directory: aegis-runtime
         run: cargo check --all-targets
 
-      - name: Run Tests
-        working-directory: openclaw-rs
-        run: cargo test --verbose
+      - name: Cargo Clippy Invariant
+        working-directory: aegis-runtime
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run Workspace Unit and Integration Tests
+        working-directory: aegis-runtime
+        run: cargo test --verbose -- --test-threads=1
+
+      - name: Enforce Zero Disk Secrets Invariant
+        working-directory: aegis-runtime
+        run: |
+          echo "Auditing repository for prohibited plaintext secret files..."
+          if find . -maxdepth 4 -name ".env*" -not -path "*/.git/*" -not -path "*/target/*" | grep -q .; then
+            echo "::error::Prohibited plaintext .env file found. Use an approved AIEN SecretProvider."
+            exit 1
+          fi
+          echo "Zero plaintext .env files verified."
+
+      - name: Enforce Sovereign Voice and Anti-Slop Invariant
+        working-directory: aegis-runtime
+        run: |
+          echo "Auditing repository for em dashes, en dashes, and formulaic tropes..."
+          BAD_CHARS=$(grep -rnE --exclude-dir=target --exclude-dir=.git --exclude="*.rs" --exclude="*.json" --exclude="*.safetensors" "—|–" src/ tests/ docs/ README.md || true)
+          if [ -n "$BAD_CHARS" ]; then
+            echo "::error::Em dashes or en dashes detected:"
+            echo "$BAD_CHARS"
+            exit 1
+          fi
+          echo "Sovereign voice compliance verified."

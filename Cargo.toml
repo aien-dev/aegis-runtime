@@ -22,7 +22,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
 rusqlite = { version = "0.31", features = ["bundled", "bundled-full"] }
 futures-util = "0.3"
-uuid = { version = "1.8", features = ["v4", "serde"] }
+uuid = { version = "1.8", features = ["v4", "v5", "serde"] }
 libloading = "0.8"
 anyhow = "1.0.104"
 async-trait = "0.1"
@@ -31,6 +31,7 @@ bytes = "1.6"
 
 # Canonical AIEN Protocol Crates
 aien-protocol-types = { path = "../aien-protocols/crates/aien-protocol-types" }
+aien-action-protocol = { path = "../aien-protocols/crates/aien-action-protocol" }
 aien-agent-state-abi = { path = "../aien-protocols/crates/aien-agent-state-abi" }
 aien-inference-protocol = { path = "../aien-protocols/crates/aien-inference-protocol" }
 aien-inference-client = { path = "../aien-protocols/crates/aien-inference-client" }

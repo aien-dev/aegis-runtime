@@ -99,3 +99,80 @@ impl Session {
         }
     }
 }
+
+impl Session {
+    pub fn to_agent_state(
+        &self,
+        agent_id: &aien_protocol_types::AgentId,
+        model_profile: &str,
+    ) -> aien_agent_state_abi::AgentState {
+        use aien_agent_state_abi::*;
+        use aien_protocol_types::*;
+
+        let closed_at = if self.status == SessionStatus::Closed {
+            Some(Timestamp::from_micros(self.updated_at as u64 * 1_000_000))
+        } else {
+            None
+        };
+
+        AgentState {
+            abi_version: ProtocolVersion::new(1, 0),
+            agent: AgentIdentity {
+                agent_id: *agent_id,
+                name: self.agent_profile.clone(),
+                model_profile: model_profile.to_string(),
+                created_at: Timestamp::from_micros(self.created_at as u64 * 1_000_000),
+            },
+            session: SessionState {
+                session_id: self.id.clone().into(),
+                title: self
+                    .objective
+                    .clone()
+                    .unwrap_or_else(|| "AEGIS Session".to_string()),
+                created_at: Timestamp::from_micros(self.created_at as u64 * 1_000_000),
+                closed_at,
+            },
+            objective: self.objective.as_ref().map(|obj| Objective {
+                objective_id: uuid::Uuid::new_v4(),
+                description: obj.clone(),
+                success_criteria: Vec::new(),
+            }),
+            context: ContextState {
+                conversation: Vec::new(),
+                pinned: Vec::new(),
+                summaries: Vec::new(),
+                cortex: Vec::new(),
+                inference: None,
+            },
+            authority: AuthorityState {
+                principal: uuid::Uuid::new_v4(),
+                policy_profile: self.policy_profile.clone(),
+                capabilities: Vec::new(),
+                restrictions: Vec::new(),
+                containment: aien_action_protocol::ContainmentState::default(),
+            },
+            budget: ResourceBudget {
+                max_tokens: Some(self.budget.max_total_tokens),
+                max_cost_micro_usd: None,
+                max_duration_seconds: Some(self.budget.max_wall_time_secs),
+                max_subagents: None,
+            },
+            execution: ExecutionState {
+                active_run: None,
+                status: match self.status {
+                    SessionStatus::Active => AgentExecutionStatus::Idle,
+                    SessionStatus::Suspended => AgentExecutionStatus::Suspended,
+                    SessionStatus::Closed => AgentExecutionStatus::Terminated,
+                },
+                pending_actions: Vec::new(),
+                pending_approvals: Vec::new(),
+                last_event: None,
+            },
+            parent: self.parent_session_id.as_ref().map(|p| StateRef {
+                state_id: aien_protocol_types::SessionId::from(p.clone()).0,
+                digest: Digest32::ZERO,
+            }),
+            sequence: SequenceNumber(self.version),
+        }
+    }
+}

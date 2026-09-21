@@ -3,9 +3,7 @@
 //! eliminating the localhost HTTP inference daemon requirement.
 
 use aien_inference_client::MockInferenceClient;
-use aien_inference_protocol::{
-    InferenceMessage, InferenceRequest, InferenceService,
-};
+use aien_inference_protocol::{InferenceMessage, InferenceRequest, InferenceService};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::Client;
@@ -439,7 +437,9 @@ impl InferenceEngine for ProtocolInferenceBackend {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<ChatTurnResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let content = self.generate_chat(messages, temperature, max_tokens).await?;
+        let content = self
+            .generate_chat(messages, temperature, max_tokens)
+            .await?;
         let (clean_content, tool_calls) = parse_structured_tool_calls(&content);
         Ok(ChatTurnResponse {
             content: clean_content,
@@ -455,7 +455,9 @@ impl InferenceEngine for ProtocolInferenceBackend {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<ChatStream, Box<dyn std::error::Error + Send + Sync>> {
-        let content = self.generate_chat(messages, temperature, max_tokens).await?;
+        let content = self
+            .generate_chat(messages, temperature, max_tokens)
+            .await?;
         let (tx, rx) = tokio::sync::mpsc::channel(10);
         tokio::spawn(async move {
             let chunk_json = serde_json::json!({
@@ -467,11 +469,14 @@ impl InferenceEngine for ProtocolInferenceBackend {
                     "finish_reason": null
                 }]
             });
-            let payload = format!("data: {}
+            let payload = format!(
+                "data: {}
 
 data: [DONE]
 
-", chunk_json);
+",
+                chunk_json
+            );
             let _ = tx.send(Ok(bytes::Bytes::from(payload))).await;
         });
         let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
@@ -539,7 +544,9 @@ impl InferenceEngine for EmbeddedInferenceBackend {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        self.inner.generate_chat(messages, temperature, max_tokens).await
+        self.inner
+            .generate_chat(messages, temperature, max_tokens)
+            .await
     }
 
     async fn generate_chat_with_tools(
@@ -560,14 +567,15 @@ impl InferenceEngine for EmbeddedInferenceBackend {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<ChatStream, Box<dyn std::error::Error + Send + Sync>> {
-        self.inner.stream_chat(messages, temperature, max_tokens).await
+        self.inner
+            .stream_chat(messages, temperature, max_tokens)
+            .await
     }
 
     async fn check_health(&self) -> bool {
         self.inner.check_health().await
     }
 }
-
 
 /// Formats conversation turns and tool specifications into canonical TinyLlama chat template:
 /// `<|system|>\n{system}</s>\n<|user|>\n{user}</s>\n<|assistant|>\n`
@@ -745,12 +753,6 @@ fn extract_tool_call_from_value(val: &serde_json::Value) -> Option<ToolCallItem>
         },
     })
 }
-
-
-
-
-
-
 
 #[cfg(test)]
 mod tests {

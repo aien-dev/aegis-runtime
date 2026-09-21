@@ -20,8 +20,8 @@ pub use execution::{Action, ActionReceipt, ActionRequest, ActionStatus, Executio
 pub use gateway::{create_router, start_gateway, GatewayState, HealthResponse};
 pub use heartbeat::{HeartbeatEngine, PulseReceipt};
 pub use inference::{
-    ChatStream, ChatTurnResponse, EmbeddedInferenceBackend, ProtocolInferenceBackend, HttpInferenceBackend,
-    InferenceEngine, ToolCallFunction, ToolCallItem,
+    ChatStream, ChatTurnResponse, EmbeddedInferenceBackend, HttpInferenceBackend, InferenceEngine,
+    ProtocolInferenceBackend, ToolCallFunction, ToolCallItem,
 };
 pub use mojo_bridge::MojoSimdBridge;
 pub use orchestration::{Run, RunBudget, RunState, TerminationReason, Trigger};
@@ -37,3 +37,10 @@ pub use sessions::{
 };
 pub use skills::{SkillDefinition, SkillExecutionRequest, SkillExecutionResponse, SkillRegistry};
 pub use vault::{VaultResolver, REDACTED_MARKER};
+
+// Re-export Canonical AIEN Agent State ABI and Protocol Types
+pub use aien_agent_state_abi::{
+    AgentEvent, AgentIdentity, AgentState, AgentStateEvent, ContextState, ExecutionState,
+    Objective, ResourceBudget, SessionState, StateRef,
+};
+pub use aien_protocol_types::{AgentId, Digest32, ProtocolVersion, SequenceNumber, Timestamp};

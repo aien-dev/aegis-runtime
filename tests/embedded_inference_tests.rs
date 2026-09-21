@@ -62,10 +62,7 @@ async fn test_embedded_structured_tool_calling_flow() {
 ```"#;
 
     let (content, tool_calls) = parse_structured_tool_calls(simulated_model_output);
-    assert_eq!(
-        content.as_deref(),
-        Some("I need to check system health.")
-    );
+    assert_eq!(content.as_deref(), Some("I need to check system health."));
     assert!(
         tool_calls.is_some(),
         "Tool call must be extracted from model output"

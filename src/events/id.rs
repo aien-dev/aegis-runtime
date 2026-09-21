@@ -30,3 +30,23 @@ impl fmt::Display for EventId {
         write!(f, "{}", self.0)
     }
 }
+
+impl From<EventId> for aien_protocol_types::EventId {
+    fn from(e: EventId) -> Self {
+        let raw = e.as_str().strip_prefix("evt_").unwrap_or(e.as_str());
+        if let Ok(u) = uuid::Uuid::parse_str(raw) {
+            aien_protocol_types::EventId(u)
+        } else {
+            aien_protocol_types::EventId(uuid::Uuid::new_v5(
+                &uuid::Uuid::NAMESPACE_OID,
+                e.as_str().as_bytes(),
+            ))
+        }
+    }
+}
+
+impl From<aien_protocol_types::EventId> for EventId {
+    fn from(id: aien_protocol_types::EventId) -> Self {
+        Self::from_string(format!("evt_{}", id.0.simple()))
+    }
+}
