@@ -1,12 +1,12 @@
+use aegis::{
+    create_router, AgentEngine, Database, GatewayState, HeartbeatEngine, HttpInferenceBackend,
+    MojoSimdBridge, SkillRegistry, VaultResolver, REDACTED_MARKER,
+};
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
 use futures_util::{SinkExt, StreamExt};
-use aegis::{
-    create_router, AgentEngine, Database, GatewayState, HeartbeatEngine, HttpInferenceBackend,
-    MojoSimdBridge, SkillRegistry, VaultResolver, REDACTED_MARKER,
-};
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;

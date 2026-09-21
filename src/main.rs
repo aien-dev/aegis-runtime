@@ -1,8 +1,8 @@
-use clap::{Parser, Subcommand};
 use aegis::{
     start_gateway, AgentEngine, Database, EmbeddedInferenceBackend, GatewayState, HeartbeatEngine,
     HttpInferenceBackend, InferenceEngine, MojoSimdBridge, SkillRegistry,
 };
+use clap::{Parser, Subcommand};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;

@@ -7,13 +7,13 @@
 //! 5. AgentEngine integration using Arc<dyn InferenceEngine>.
 //! 6. Blackwell GPU device acceleration detection on Grace Blackwell GB10.
 
-use aien_inference_abi::ModelConfig;
-use futures_util::StreamExt;
 use aegis::inference::{
     format_messages_to_prompt, parse_structured_tool_calls, EmbeddedInferenceBackend,
     EmbeddedModel, InferenceEngine,
 };
 use aegis::{AgentEngine, SkillExecutionRequest, SkillRegistry};
+use aien_inference_abi::ModelConfig;
+use futures_util::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -250,12 +250,12 @@ async fn test_embedded_inference_chat_streaming() {
 
 #[tokio::test]
 async fn test_gateway_with_embedded_inference_streaming() {
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
     use aegis::create_router;
     use aegis::heartbeat::HeartbeatEngine;
     use aegis::persistence::Database;
     use aegis::GatewayState;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
     let config = ModelConfig {
