@@ -1,11 +1,11 @@
 [package]
-name = "openclaw"
+name = "aegis"
 version = "0.2.0"
 edition = "2021"
 authors = ["Drake Stapleton <drake.aien@proton.me>"]
 license = "Apache-2.0 WITH LLVM-exception"
-description = "Native sovereign agent runtime with Axum WebSocket gateway, heartbeat loop, and local Modular MAX inference on Grace Blackwell GB10"
-repository = "https://github.com/aien-dev/openclaw-rs"
+description = "Sovereign agent runtime with defense plane, context branching, and streaming gateway"
+repository = "https://github.com/aien-dev/aegis-runtime"
 
 [dependencies]
 tokio = { version = "1.40", features = ["full"] }
@@ -38,9 +38,9 @@ tempfile = "3.17"
 tokio-tungstenite = "0.24"
 
 [[bin]]
-name = "openclaw"
+name = "aegis"
 path = "src/main.rs"
 
 [lib]
-name = "openclaw"
+name = "aegis"
 path = "src/lib.rs"

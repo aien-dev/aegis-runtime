@@ -64,7 +64,7 @@ pub async fn health_handler(State(state): State<GatewayState>) -> impl IntoRespo
 
     Json(HealthResponse {
         status: "healthy",
-        engine: "openclaw-rs/0.2.0",
+        engine: "aegis-runtime/0.2.0",
         uptime_seconds: uptime,
         local_model: model,
         heartbeat_interval_seconds: state.heartbeat.interval_secs(),
@@ -312,7 +312,7 @@ pub async fn openai_models_handler(State(state): State<GatewayState>) -> impl In
             "id": model,
             "object": "model",
             "created": 1789783086,
-            "owned_by": "openclaw-rs",
+            "owned_by": "aegis-runtime",
         }]
     }))
 }
@@ -470,7 +470,7 @@ pub async fn ws_handler(
 async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
     let welcome = json!({
         "type": "welcome",
-        "gateway": "openclaw-rs",
+        "gateway": "aegis-runtime",
         "engine": "OpenClaw WebSocket Gateway",
         "status": "connected",
         "timestamp": chrono::Utc::now().to_rfc3339(),
