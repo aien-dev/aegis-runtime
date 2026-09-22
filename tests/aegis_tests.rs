@@ -1070,3 +1070,39 @@ async fn test_agent_offline_inference_fail_closed() {
     let err = result.unwrap_err();
     assert!(err.to_string().contains("Inference endpoint unreachable"));
 }
+
+#[tokio::test]
+async fn test_gateway_probe_endpoint() {
+    let state = create_test_state().await;
+    let app = create_router(state);
+
+    let probes = aien_probe::ProbeSet::new().with(
+        "safety",
+        aien_probe::Probe::Noul(aien_probe::Noul::new("Is this code safe?")),
+    );
+
+    let payload = serde_json::json!({
+        "state": { "diff": "+ fn main() {}" },
+        "probes": probes,
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/probe")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["model"], "aien-sovereign-gb10");
+    assert!(body["answers"].as_array().is_some());
+}

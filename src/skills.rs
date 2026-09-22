@@ -91,6 +91,14 @@ impl SkillRegistry {
     }
 
     pub fn execute(&self, req: &SkillExecutionRequest) -> SkillExecutionResponse {
+        if let Err(reason) = crate::enforcement::pre_dispatch_check(&req.skill_name, &req.arguments)
+        {
+            return SkillExecutionResponse {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            };
+        }
         let handler = {
             let map = self.skills.read().unwrap();
             map.get(&req.skill_name).map(|(_, h)| h.clone())
