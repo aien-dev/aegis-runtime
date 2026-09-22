@@ -385,10 +385,9 @@ pub async fn shell_handler(
     State(state): State<GatewayState>,
     Json(payload): Json<ShellRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    if let Err(reason) = crate::enforcement::pre_dispatch_check(
-        "bash_eval",
-        &json!({"command": payload.command}),
-    ) {
+    if let Err(reason) =
+        crate::enforcement::pre_dispatch_check("bash_eval", &json!({"command": payload.command}))
+    {
         return Ok(Json(ShellResponse {
             stdout: String::new(),
             stderr: reason,
@@ -467,8 +466,7 @@ pub async fn execute_skill_handler(
     Json(req): Json<SkillExecutionRequest>,
 ) -> impl IntoResponse {
     if let Some(threshold) = crate::enforcement::probe_threshold_from_env() {
-        let guard =
-            crate::policy_guard::ProbePolicyGuard::new_reference(threshold);
+        let guard = crate::policy_guard::ProbePolicyGuard::new_reference(threshold);
         if let Err(e) = guard.gate_skill(&req.skill_name, &req.arguments).await {
             return Json(SkillExecutionResponse {
                 success: false,
