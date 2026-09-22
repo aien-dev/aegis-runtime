@@ -28,7 +28,7 @@ use crate::heartbeat::HeartbeatEngine;
 use crate::inference::InferenceEngine;
 use crate::mojo_bridge::MojoSimdBridge;
 use crate::persistence::Database;
-use crate::skills::{SkillExecutionRequest, SkillRegistry};
+use crate::skills::{SkillExecutionRequest, SkillExecutionResponse, SkillRegistry};
 
 #[derive(Clone)]
 pub struct GatewayState {
@@ -385,6 +385,17 @@ pub async fn shell_handler(
     State(state): State<GatewayState>,
     Json(payload): Json<ShellRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    if let Err(reason) = crate::enforcement::pre_dispatch_check(
+        "bash_eval",
+        &json!({"command": payload.command}),
+    ) {
+        return Ok(Json(ShellResponse {
+            stdout: String::new(),
+            stderr: reason,
+            exit_code: 1,
+            success: false,
+        }));
+    }
     match state
         .skills
         .workspace()
@@ -455,6 +466,17 @@ pub async fn execute_skill_handler(
     State(state): State<GatewayState>,
     Json(req): Json<SkillExecutionRequest>,
 ) -> impl IntoResponse {
+    if let Some(threshold) = crate::enforcement::probe_threshold_from_env() {
+        let guard =
+            crate::policy_guard::ProbePolicyGuard::new_reference(threshold);
+        if let Err(e) = guard.gate_skill(&req.skill_name, &req.arguments).await {
+            return Json(SkillExecutionResponse {
+                success: false,
+                output: String::new(),
+                error: Some(e.to_string()),
+            });
+        }
+    }
     let res = state.skills.execute(&req);
     Json(res)
 }

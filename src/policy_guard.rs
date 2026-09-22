@@ -94,4 +94,18 @@ impl<B: ProbeBackend + 'static> ProbePolicyGuard<B> {
 
         Ok(true)
     }
+
+    /// Pre-dispatch gate for a named skill plus JSON arguments.
+    /// Runs the deterministic membrane first, then the probe opinion.
+    pub async fn gate_skill(
+        &self,
+        skill_name: &str,
+        args: &serde_json::Value,
+    ) -> Result<(), SecurityError> {
+        if let Err(reason) = crate::enforcement::pre_dispatch_check(skill_name, args) {
+            return Err(SecurityError::AccessDenied(reason));
+        }
+        let payload = args.to_string();
+        self.check_action(skill_name, &payload).await.map(|_| ())
+    }
 }

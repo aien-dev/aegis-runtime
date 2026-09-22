@@ -45,5 +45,7 @@ pub use aien_agent_state_abi::{
 };
 pub use aien_protocol_types::{AgentId, Digest32, ProtocolVersion, SequenceNumber, Timestamp};
 
+pub mod enforcement;
 pub mod policy_guard;
+pub use enforcement::{pre_dispatch_check, probe_threshold_from_env};
 pub use policy_guard::ProbePolicyGuard;
