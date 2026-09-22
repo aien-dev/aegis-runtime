@@ -44,3 +44,6 @@ pub use aien_agent_state_abi::{
     Objective, ResourceBudget, SessionState, StateRef,
 };
 pub use aien_protocol_types::{AgentId, Digest32, ProtocolVersion, SequenceNumber, Timestamp};
+
+pub mod policy_guard;
+pub use policy_guard::ProbePolicyGuard;

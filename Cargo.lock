@@ -10,6 +10,7 @@ dependencies = [
  "aien-agent-state-abi",
  "aien-inference-client",
  "aien-inference-protocol",
+ "aien-probe",
  "aien-protocol-types",
  "anyhow",
  "async-trait",
@@ -82,6 +83,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "aien-evaluation-protocol"
+version = "0.1.0"
+dependencies = [
+ "aien-protocol-types",
+ "aien-provenance",
+ "async-trait",
+ "hex",
+ "p256",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "uuid",
+]
+
+[[package]]
 name = "aien-inference-client"
 version = "0.1.0"
 dependencies = [
@@ -106,6 +123,22 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "uuid",
+]
+
+[[package]]
+name = "aien-probe"
+version = "0.1.0"
+dependencies = [
+ "aien-evaluation-protocol",
+ "aien-protocol-types",
+ "async-trait",
+ "hex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
