@@ -616,6 +616,35 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
     }
 }
 
+#[derive(Deserialize)]
+pub struct ProbeApiRequest {
+    pub state: serde_json::Value,
+    pub probes: aien_probe::ProbeSet,
+}
+
+#[derive(Serialize)]
+pub struct ProbeApiResponse {
+    pub model: String,
+    pub answers: Vec<(String, aien_probe::Answer)>,
+    pub latency_micros: u64,
+}
+
+pub async fn probe_handler(
+    Json(payload): Json<ProbeApiRequest>,
+) -> Result<Json<ProbeApiResponse>, (StatusCode, String)> {
+    let engine = aien_probe::ProbeEngine::new(aien_probe::DeterministicReferenceBackend::new());
+    let response = engine
+        .evaluate(&payload.state, &payload.probes)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(ProbeApiResponse {
+        model: "aien-sovereign-gb10".to_string(),
+        answers: response.answers,
+        latency_micros: response.latency_micros,
+    }))
+}
+
 pub fn create_router(state: GatewayState) -> Router {
     Router::new()
         .route("/health", get(health_handler))
@@ -635,6 +664,7 @@ pub fn create_router(state: GatewayState) -> Router {
         .route("/api/v1/skills/execute", post(execute_skill_handler))
         .route("/v1/chat/completions", post(openai_completions_handler))
         .route("/v1/models", get(openai_models_handler))
+        .route("/v1/probe", post(probe_handler))
         .route("/ws", get(ws_handler))
         .route("/api/v1/ws", get(ws_handler))
         .layer(
