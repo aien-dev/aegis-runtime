@@ -75,4 +75,4 @@ Verified on NVIDIA Grace Blackwell GB10:
 ## 6. License and Commons Covenant
 
 Licensed under the **Sovereign Resource Commons License 1.0 (SRCL-1.0)**.
-Copyright (c) 2026 Drake Stapleton <drake.aien@proton.me> & AIEN <aien.atlas@proton.me>.
+Copyright (c) 2026 Drake Stapleton <aien@aienos.com> & AIEN <aien@aienos.com>.
