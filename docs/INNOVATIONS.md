@@ -39,18 +39,18 @@ The `AgentEngine` implements an autonomous reasoning and execution loop:
 - `write_file`: Atomically writes or updates files with parent directory creation.
 - `list_dir`: Traverses directories, reporting relative paths and sizes.
 - `git_status`: Inspects repository branch, staged modifications, and untracked files.
-- `cortex_recall`: Queries persistent canonical memory from Spark Cortex (`atlas-memory`).
+- `cortex.search`: The canonical memory tool. It is registered and not connected, so it reports unavailable instead of a fake result. `cortex_recall` is the legacy alias.
 
 ---
 
-## 3. Hardware TPM Key Vault (`src/vault.rs`)
+## 3. Secret resolution (`src/vault.rs`)
 
-### Zero Plaintext Disk Secrets
-`openclaw-rs` enforces a strict zero disk secret policy:
+### No plaintext secret files
 - No `.env`, `.env.local`, or configuration secret files are stored on disk.
-- Cryptographic keys and tokens are stored in the host Trusted Platform Module (TPM) via `atlas-vault`.
-- Secrets resolve dynamically in memory only when required for external authentication.
-- Model outputs and logs are actively scanned to redact known secret signatures with `[REDACTED_BY_ATLAS_VAULT]`.
+- `VaultResolver` is a client of the `atlas-vault` command. It does not open a TPM device. Hardware-backed protection is a property of that provider when the deployment has it.
+- Production resolution is the in-memory cache, then `atlas-vault`. If the provider does not answer, resolution fails closed.
+- `AIEN_DEV_SECRET_FALLBACK=1` is the explicit development permission to read the process environment after that.
+- Model outputs and logs are scanned to redact known secret values with `[REDACTED_BY_ATLAS_VAULT]`.
 
 ---
 

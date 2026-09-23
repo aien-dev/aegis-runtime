@@ -385,20 +385,10 @@ pub async fn shell_handler(
     State(state): State<GatewayState>,
     Json(payload): Json<ShellRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    if let Err(reason) =
-        crate::enforcement::pre_dispatch_check("bash_eval", &json!({"command": payload.command}))
-    {
-        return Ok(Json(ShellResponse {
-            stdout: String::new(),
-            stderr: reason,
-            exit_code: 1,
-            success: false,
-        }));
-    }
     match state
         .skills
         .workspace()
-        .execute_shell(&payload.command, None, 15)
+        .dispatch_shell(&payload.command, None, 15)
     {
         Ok(stdout) => Ok(Json(ShellResponse {
             stdout,
@@ -457,7 +447,7 @@ pub async fn trigger_heartbeat_handler(State(state): State<GatewayState>) -> imp
 
 // Skills endpoints
 pub async fn list_skills_handler(State(state): State<GatewayState>) -> impl IntoResponse {
-    let list = state.skills.list_skills();
+    let list = state.skills.advertised_skills();
     Json(list)
 }
 
@@ -536,7 +526,7 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
                                 let _ = socket.send(Message::Text(out.to_string())).await;
                             }
                             "skills_list" => {
-                                let list = state.skills.list_skills();
+                                let list = state.skills.advertised_skills();
                                 let out = json!({"type": "skills_list", "skills": list});
                                 let _ = socket.send(Message::Text(out.to_string())).await;
                             }
@@ -574,7 +564,7 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
                             }
                             "shell" => {
                                 let cmd_str = parsed.get("command").and_then(|v| v.as_str()).unwrap_or("echo shell ready");
-                                let out = match state.skills.workspace().execute_shell(cmd_str, None, 15) {
+                                let out = match state.skills.workspace().dispatch_shell(cmd_str, None, 15) {
                                     Ok(stdout) => json!({
                                         "type": "shell_output",
                                         "stdout": stdout,

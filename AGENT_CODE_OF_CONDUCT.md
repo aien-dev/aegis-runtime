@@ -33,7 +33,7 @@ This Specification establishes non-negotiable operational requirements for all a
 ---
 
 ### Article IV: Hardware Silicon Vault and Secret Redaction
-1. **Dynamic In-Memory Key Resolution**: Autonomous agents are strictly forbidden from writing API keys, passwords, private tokens, or credentials to disk, logs, scratchpads, or commit histories. All secrets must resolve dynamically in memory from the hardware TPM vault (atlas-vault).
+1. **Dynamic In-Memory Key Resolution**: Autonomous agents are strictly forbidden from writing API keys, passwords, private tokens, or credentials to disk, logs, scratchpads, or commit histories. Secrets resolve in memory from `atlas-vault`. The process environment is not a production source.
 2. **Active Stream Redaction**: Agent output streams, logs, and subagent payloads must actively redact any string matching secret key signatures with [REDACTED_BY_ATLAS_VAULT].
 3. **Data Firewall Enforcement**: Outbound peer communications must traverse the Personal Data Firewall (beacon-core), sanitizing personal file paths and sensitive host identifiers before egress.
 
