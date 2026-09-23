@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "name": "openclaw-rs",
+  "name": "aegis-runtime",
   "version": "0.2.0",
   "description": "Ultra-high-performance sovereign agent runtime in Rust, Mojo, and Modular MAX",
-  "repository": "https://github.com/aien-dev/openclaw-rs",
+  "repository": "https://github.com/aien-dev/aegis-runtime",
   "license": "SRCL-1.0",
   "system": {
     "architecture": "aarch64-unknown-linux-gnu",

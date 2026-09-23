@@ -197,7 +197,7 @@ pub async fn openai_completions_handler(
         if req_model != &supported_model
             && req_model != "atlas-lightning-omni"
             && req_model != "modular-max"
-            && req_model != "openclaw-default"
+            && req_model != "aegis-default"
             && req_model != "default"
         {
             let err_body = json!({
@@ -480,7 +480,7 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
     let welcome = json!({
         "type": "welcome",
         "gateway": "aegis-runtime",
-        "engine": "OpenClaw WebSocket Gateway",
+        "engine": "AEGIS WebSocket Gateway",
         "status": "connected",
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
@@ -692,7 +692,7 @@ pub async fn start_gateway(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let app = create_router(state);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    info!("OpenClaw Gateway listening on http://{}", addr);
+    info!("AEGIS Gateway listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;

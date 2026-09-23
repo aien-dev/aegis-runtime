@@ -2,16 +2,16 @@ use libloading::{Library, Symbol};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-pub const DEFAULT_SO_PATH: &str = "mojo/libopenclaw_simd.so";
+pub const DEFAULT_SO_PATH: &str = "mojo/libaegis_simd.so";
 
 pub fn default_so_path() -> PathBuf {
-    if let Ok(p) = std::env::var("OPENCLAW_SIMD_SO_PATH") {
+    if let Ok(p) = std::env::var("AEGIS_SIMD_SO_PATH") {
         let pb = PathBuf::from(p);
         if pb.exists() {
             return pb;
         }
     }
-    if let Some(p) = option_env!("OPENCLAW_SIMD_SO_BUILT") {
+    if let Some(p) = option_env!("AEGIS_SIMD_SO_BUILT") {
         let pb = PathBuf::from(p);
         if pb.exists() {
             return pb;
@@ -28,7 +28,7 @@ pub fn default_so_path() -> PathBuf {
         }
     }
     if let Ok(home) = std::env::var("HOME") {
-        let candidate = PathBuf::from(home).join("workspace/openclaw-rs/mojo/libopenclaw_simd.so");
+        let candidate = PathBuf::from(home).join("workspace/aegis-runtime/mojo/libaegis_simd.so");
         if candidate.exists() {
             return candidate;
         }
@@ -68,23 +68,23 @@ impl MojoSimdBindings {
             ));
 
             let version: Symbol<FnVersion> = lib
-                .get(b"openclaw_simd_version\0")
-                .map_err(|e| format!("Missing symbol openclaw_simd_version: {}", e))?;
+                .get(b"aegis_simd_version\0")
+                .map_err(|e| format!("Missing symbol aegis_simd_version: {}", e))?;
             let cosine_similarity_4d: Symbol<FnCosineSim4d> = lib
-                .get(b"openclaw_cosine_similarity_4d\0")
-                .map_err(|e| format!("Missing symbol openclaw_cosine_similarity_4d: {}", e))?;
+                .get(b"aegis_cosine_similarity_4d\0")
+                .map_err(|e| format!("Missing symbol aegis_cosine_similarity_4d: {}", e))?;
             let simd_accumulate: Symbol<FnSimdAccumulate> = lib
-                .get(b"openclaw_simd_accumulate\0")
-                .map_err(|e| format!("Missing symbol openclaw_simd_accumulate: {}", e))?;
+                .get(b"aegis_simd_accumulate\0")
+                .map_err(|e| format!("Missing symbol aegis_simd_accumulate: {}", e))?;
             let token_entropy_simd: Symbol<FnTokenEntropy> = lib
-                .get(b"openclaw_token_entropy_simd\0")
-                .map_err(|e| format!("Missing symbol openclaw_token_entropy_simd: {}", e))?;
+                .get(b"aegis_token_entropy_simd\0")
+                .map_err(|e| format!("Missing symbol aegis_token_entropy_simd: {}", e))?;
             let token_projection_simd: Symbol<FnTokenProjection> = lib
-                .get(b"openclaw_token_projection_simd\0")
-                .map_err(|e| format!("Missing symbol openclaw_token_projection_simd: {}", e))?;
+                .get(b"aegis_token_projection_simd\0")
+                .map_err(|e| format!("Missing symbol aegis_token_projection_simd: {}", e))?;
             let temperature_scale_simd: Symbol<FnTemperatureScale> = lib
-                .get(b"openclaw_temperature_scale_simd\0")
-                .map_err(|e| format!("Missing symbol openclaw_temperature_scale_simd: {}", e))?;
+                .get(b"aegis_temperature_scale_simd\0")
+                .map_err(|e| format!("Missing symbol aegis_temperature_scale_simd: {}", e))?;
 
             Ok(Self {
                 version: *version,

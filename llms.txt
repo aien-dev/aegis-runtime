@@ -1,8 +1,8 @@
-# openclaw-rs
+# aegis-runtime
 > Ultra-high-performance sovereign agent runtime in native Rust, Mojo 1.1 SIMD kernels, and Modular MAX local inference on Grace Blackwell GB10. Replaces legacy Node.js/TypeScript runtimes with sub-millisecond execution, zero cloud token bills, and proactive autonomous heartbeats.
 
 ## Overview
-- Repository: https://github.com/aien-dev/openclaw-rs
+- Repository: https://github.com/aien-dev/aegis-runtime
 - License: Sovereign Reciprocal Commons License (SRCL-1.0), Apache 2.0 with LLVM Exceptions and Reciprocal AI Weight Release.
 - Language: Rust 2021 + Mojo 1.1
 - Runtime: Pure native compiled binaries. Zero Node.js. Zero Python daemons.
@@ -18,7 +18,7 @@
 ## Quickstart
 ```bash
 cargo build --release
-./target/release/openclaw serve --port 18096
+./target/release/aegis serve --port 18096
 ```
 
 ## Endpoints

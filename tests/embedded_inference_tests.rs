@@ -3,7 +3,7 @@
 //! 1. In-process EmbeddedInferenceBackend initialization.
 //! 2. ProtocolInferenceBackend contract execution.
 //! 3. Pure-Rust TinyLlama chat template formatting.
-//! 4. Structured tool calling (model -> structured tool call -> OpenClaw tool -> model).
+//! 4. Structured tool calling (model -> structured tool call -> AEGIS tool -> model).
 //! 5. AgentEngine integration using Arc<dyn InferenceEngine>.
 //! 6. Gateway streaming chat completions over SSE.
 

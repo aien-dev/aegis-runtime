@@ -32,14 +32,14 @@ enum Commands {
         model_path: Option<String>,
         #[arg(long)]
         tokenizer_path: Option<String>,
-        #[arg(long, default_value = "openclaw.sqlite")]
+        #[arg(long, default_value = "aegis.sqlite")]
         db_path: String,
         #[arg(long, default_value = "60")]
         heartbeat_secs: u64,
     },
     /// Run a single heartbeat tick immediately
     Tick {
-        #[arg(long, default_value = "openclaw.sqlite")]
+        #[arg(long, default_value = "aegis.sqlite")]
         db_path: String,
     },
     /// Run persistent background heartbeat daemon loop
@@ -52,7 +52,7 @@ enum Commands {
         model_path: Option<String>,
         #[arg(long)]
         tokenizer_path: Option<String>,
-        #[arg(long, default_value = "openclaw.sqlite")]
+        #[arg(long, default_value = "aegis.sqlite")]
         db_path: String,
         #[arg(long, default_value = "30")]
         heartbeat_secs: u64,
@@ -80,7 +80,7 @@ enum Commands {
         model_path: Option<String>,
         #[arg(long)]
         tokenizer_path: Option<String>,
-        #[arg(long, default_value = "openclaw.sqlite")]
+        #[arg(long, default_value = "aegis.sqlite")]
         db_path: String,
         #[arg(long, default_value = "8")]
         max_turns: usize,
@@ -100,7 +100,7 @@ enum Commands {
         model_path: Option<String>,
         #[arg(long)]
         tokenizer_path: Option<String>,
-        #[arg(long, default_value = "openclaw.sqlite")]
+        #[arg(long, default_value = "aegis.sqlite")]
         db_path: String,
     },
 }
@@ -113,7 +113,7 @@ fn resolve_inference_engine(
 ) -> Result<Arc<dyn InferenceEngine>, Box<dyn std::error::Error>> {
     if mode == "http" {
         info!(
-            "Binding OpenClaw to external HTTP inference daemon at {}",
+            "Binding AEGIS to external HTTP inference daemon at {}",
             max_url
         );
         Ok(Arc::new(HttpInferenceBackend::new(
@@ -122,7 +122,7 @@ fn resolve_inference_engine(
         )))
     } else {
         info!(
-            "Binding OpenClaw to in-process EmbeddedInferenceBackend (NativeTransformerBackend)..."
+            "Binding AEGIS to in-process EmbeddedInferenceBackend (NativeTransformerBackend)..."
         );
         let backend = EmbeddedInferenceBackend::load_or_fallback(model_path, tokenizer_path)
             .map_err(|e| anyhow::anyhow!(e))?;
@@ -134,12 +134,30 @@ fn resolve_inference_engine(
     }
 }
 
+/// One-time migration for the openclaw-rs -> aegis-runtime rename.
+/// The database default was `openclaw.sqlite`; it is now `aegis.sqlite`.
+/// If the new file does not exist but the legacy one does, copy it forward
+/// so existing installations keep their data. Explicit `--db-path` values
+/// are always respected literally and never migrated.
+fn migrate_legacy_db_if_needed() {
+    let new_path = std::path::Path::new("aegis.sqlite");
+    let legacy_path = std::path::Path::new("openclaw.sqlite");
+    if !new_path.exists() && legacy_path.exists() {
+        match std::fs::copy(legacy_path, new_path) {
+            Ok(_) => eprintln!("Migrated legacy openclaw.sqlite -> aegis.sqlite"),
+            Err(e) => eprintln!("Warning: could not migrate openclaw.sqlite: {}", e),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).ok();
+
+    migrate_legacy_db_if_needed();
 
     let cli = Cli::parse();
 
@@ -149,7 +167,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_url: "http://127.0.0.1:18006/v1/chat/completions".to_string(),
         model_path: None,
         tokenizer_path: None,
-        db_path: "openclaw.sqlite".to_string(),
+        db_path: "aegis.sqlite".to_string(),
         heartbeat_secs: 60,
     }) {
         Commands::Serve {
@@ -161,7 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             db_path,
             heartbeat_secs,
         } => {
-            info!("Initializing OpenClaw engine on Grace Blackwell GB10...");
+            info!("Initializing AEGIS engine on Grace Blackwell GB10...");
             let db = Arc::new(Database::open(Path::new(&db_path))?);
             let inference = resolve_inference_engine(
                 &inference_mode,
@@ -210,7 +228,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             db_path,
             heartbeat_secs,
         } => {
-            info!("Initializing OpenClaw persistent heartbeat daemon on Grace Blackwell GB10...");
+            info!("Initializing AEGIS persistent heartbeat daemon on Grace Blackwell GB10...");
             let db = Arc::new(Database::open(Path::new(&db_path))?);
             let inference = resolve_inference_engine(
                 &inference_mode,
@@ -225,7 +243,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ));
 
             info!(
-                "Starting OpenClaw persistent heartbeat daemon loop (interval: {}s)...",
+                "Starting AEGIS persistent heartbeat daemon loop (interval: {}s)...",
                 heartbeat_secs
             );
             let mut interval =
@@ -274,7 +292,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             db_path,
             max_turns,
         } => {
-            println!("=== OpenClaw Sovereign Agent Execution ===");
+            println!("=== AEGIS Sovereign Agent Execution ===");
             println!("Task Goal: {}", prompt);
             let inference = resolve_inference_engine(
                 &inference_mode,
@@ -355,7 +373,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tokenizer_path,
             db_path,
         } => {
-            println!("=== OpenClaw Sovereign Runtime Status ===");
+            println!("=== AEGIS Sovereign Runtime Status ===");
             println!("Architecture: Pure native Rust + Mojo 1.1 + In-Process NativeTransformer");
             println!("Hardware Target: Grace Blackwell GB10 (aarch64-unknown-linux-gnu)");
             println!("Database: SQLite WAL ({})", db_path);

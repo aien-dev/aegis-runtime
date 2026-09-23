@@ -1,6 +1,6 @@
-# Agent Integration Guide: openclaw-rs
+# Agent Integration Guide: aegis-runtime
 
-This document defines the interface and protocols for autonomous agents interacting with or contributing to `openclaw-rs`.
+This document defines the interface and protocols for autonomous agents interacting with or contributing to `aegis-runtime`.
 
 ## Autonomous Operating Rules
 1. **Branch Isolation**: Never commit directly to `main`. Create feature branches (`feat/`, `fix/`, `perf/`), execute preflight checks, and open public Pull Requests immediately.
@@ -11,7 +11,7 @@ This document defines the interface and protocols for autonomous agents interact
 ## Architecture and Endpoints
 - **Control Plane**: Port 18096 (Axum REST, SSE, WebSocket).
 - **Local MAX Inference**: Port 18006 (Modular MAX engine running on GB10).
-- **SQLite Database**: `openclaw.sqlite` in WAL mode.
+- **SQLite Database**: `aegis.sqlite` in WAL mode.
 
 ## Preflight Verification
 Before pushing changes or opening a PR:

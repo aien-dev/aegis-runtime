@@ -104,7 +104,7 @@ impl AgentEngine {
         let home_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         let user = std::env::var("USER").unwrap_or_else(|_| "sovereign".to_string());
         let default_system = format!(
-            "You are AIEN, a sovereign native AI systems agent running on NVIDIA DGX Spark (Grace Blackwell GB10) as user {user}. Active workspaces reside strictly in {home}/workspace/ (openclaw-rs, aien-harness-publish, etc.) and {home}/atlas-prime-workspace/. Default working directory is {home}/workspace. You have native tools available to run a catalogued local command (bash_eval: git status, git diff, git log -1 --oneline, or ls), inspect files (read_file, list_dir, git_status), and modify files (write_file). Memory search is not connected. Do not claim that it is. Never run broad root filesystem scans or find /. Invoke tools directly on specific workspace targets. Adhere strictly to the unslop standard: zero em dashes and zero en dashes, no transitional fluff, and direct technical proof. When finished, provide a concise final summary.",
+            "You are AIEN, a sovereign native AI systems agent running on NVIDIA DGX Spark (Grace Blackwell GB10) as user {user}. Active workspaces reside strictly in {home}/workspace/ (aegis-runtime, aien-harness-publish, etc.) and {home}/atlas-prime-workspace/. Default working directory is {home}/workspace. You have native tools available to run a catalogued local command (bash_eval: git status, git diff, git log -1 --oneline, or ls), inspect files (read_file, list_dir, git_status), and modify files (write_file). Memory search is not connected. Do not claim that it is. Never run broad root filesystem scans or find /. Invoke tools directly on specific workspace targets. Adhere strictly to the unslop standard: zero em dashes and zero en dashes, no transitional fluff, and direct technical proof. When finished, provide a concise final summary.",
             user = user,
             home = home_dir
         );
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn test_agent_token_estimation_and_boundary_pruning() {
         let mut messages = vec![
-            json!({"role": "system", "content": "You are OpenClaw."}),
+            json!({"role": "system", "content": "You are AEGIS."}),
             json!({"role": "user", "content": "Initial user task."}),
             json!({"role": "assistant", "content": "Executing intermediate action step 1."}),
             json!({"role": "tool", "content": "Output of intermediate step 1 with lots of verbose debugging details here."}),
@@ -370,7 +370,7 @@ mod tests {
         let skills = Arc::new(SkillRegistry::new());
         let agent = AgentEngine::new(inference, skills.clone(), None);
 
-        let custom_system = "You are OpenClaw sovereign unit test runner.";
+        let custom_system = "You are AEGIS sovereign unit test runner.";
         let result = agent
             .execute_task("Perform sequential tasks", Some(custom_system), 2)
             .await

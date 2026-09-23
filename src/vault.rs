@@ -172,11 +172,11 @@ mod tests {
     #[test]
     fn test_vault_streaming_chunk_redaction() {
         let vault = VaultResolver::new();
-        vault.insert_cached("API_KEY", "openclaw_sk_live_998877");
+        vault.insert_cached("API_KEY", "aegis_sk_live_998877");
 
         let chunks = vec![
             "data: {\"choices\": [{\"delta\": {\"content\": \"key is \"}}]}\\n\\n",
-            "data: {\"choices\": [{\"delta\": {\"content\": \"openclaw_sk_live_998877\"}}]}\\n\\n",
+            "data: {\"choices\": [{\"delta\": {\"content\": \"aegis_sk_live_998877\"}}]}\\n\\n",
             "data: [DONE]\\n\\n",
         ];
 
@@ -186,7 +186,7 @@ mod tests {
         }
 
         assert_eq!(sanitized_stream.len(), 3);
-        assert!(!sanitized_stream[1].contains("openclaw_sk_live_998877"));
+        assert!(!sanitized_stream[1].contains("aegis_sk_live_998877"));
         assert!(sanitized_stream[1].contains(REDACTED_MARKER));
         assert_eq!(sanitized_stream[2], "data: [DONE]\\n\\n");
     }

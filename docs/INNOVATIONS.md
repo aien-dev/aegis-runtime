@@ -1,8 +1,8 @@
-# OpenClaw Architectural Innovations
+# AEGIS Architectural Innovations
 
 ### Pure Compiled Systems Architecture, Mojo 1.1 SIMD Bridge, and Hardware TPM Vault
 
-`openclaw-rs` is an autonomous agent runtime engineered in pure native compiled Rust and Mojo 1.1. It replaces bloated, interpreted Node.js frameworks with a sub-millisecond compiled engine optimized for local workstation hardware.
+`aegis-runtime` is an autonomous agent runtime engineered in pure native compiled Rust and Mojo 1.1. It replaces bloated, interpreted Node.js frameworks with a sub-millisecond compiled engine optimized for local workstation hardware.
 
 ---
 

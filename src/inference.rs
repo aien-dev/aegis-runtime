@@ -1,5 +1,5 @@
-//! In-process embedded inference backend and HTTP adapter for OpenClaw.
-//! Connects OpenClaw directly to NativeTransformerBackend and TinyLlamaTokenizer in-process,
+//! In-process embedded inference backend and HTTP adapter for AEGIS.
+//! Connects AEGIS directly to NativeTransformerBackend and TinyLlamaTokenizer in-process,
 //! eliminating the localhost HTTP inference daemon requirement.
 
 use aien_inference_client::MockInferenceClient;
@@ -789,11 +789,11 @@ mod tests {
     #[test]
     fn test_format_messages_to_prompt() {
         let messages = vec![
-            json!({"role": "system", "content": "You are OpenClaw."}),
+            json!({"role": "system", "content": "You are AEGIS."}),
             json!({"role": "user", "content": "Hello."}),
         ];
         let prompt = format_messages_to_prompt(&messages, None);
-        assert!(prompt.contains("<|system|>\nYou are OpenClaw.</s>"));
+        assert!(prompt.contains("<|system|>\nYou are AEGIS.</s>"));
         assert!(prompt.contains("<|user|>\nHello.</s>"));
         assert!(prompt.ends_with("<|assistant|>\n"));
     }

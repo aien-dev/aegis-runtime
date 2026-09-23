@@ -63,7 +63,7 @@ impl WorkspaceCapability {
 
     /// Automatically detects the active workspace root.
     pub fn detect() -> Self {
-        if let Ok(ws) = std::env::var("OPENCLAW_WORKSPACE") {
+        if let Ok(ws) = std::env::var("AEGIS_WORKSPACE") {
             if let Ok(cap) = Self::new(&ws) {
                 return cap;
             }

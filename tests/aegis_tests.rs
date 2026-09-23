@@ -144,7 +144,7 @@ async fn test_gateway_openai_completions_endpoint() {
     let req_payload = serde_json::json!({
         "model": "atlas-lightning-omni",
         "messages": [
-            {"role": "system", "content": "You are OpenClaw."},
+            {"role": "system", "content": "You are AEGIS."},
             {"role": "user", "content": "ping"}
         ]
     });
@@ -178,7 +178,7 @@ async fn test_gateway_openai_multiturn_completions() {
     let req_payload = serde_json::json!({
         "model": "atlas-lightning-omni",
         "messages": [
-            {"role": "system", "content": "You are OpenClaw systems agent."},
+            {"role": "system", "content": "You are AEGIS systems agent."},
             {"role": "user", "content": "List current memory status."},
             {"role": "assistant", "content": "All memory buffers nominal."},
             {"role": "user", "content": "Execute verification sweep."}
@@ -703,7 +703,7 @@ async fn test_gateway_agent_run_complex_payloads_and_edge_paths() {
 
     let payload = serde_json::json!({
         "prompt": complex_goal,
-        "system": "You are OpenClaw sovereign integration verifier.",
+        "system": "You are AEGIS sovereign integration verifier.",
         "max_turns": 3
     });
 
@@ -905,13 +905,13 @@ fn test_agent_token_budget_boundary_conditions() {
 #[test]
 fn test_vault_streaming_redaction_and_zero_disk_keys() {
     let vault = VaultResolver::new();
-    vault.insert_cached("API_SECRET_KEY", "openclaw_sk_live_alpha9922");
+    vault.insert_cached("API_SECRET_KEY", "aegis_sk_live_alpha9922");
     vault.insert_cached("DB_PASS", "postgres_master_secret_123");
 
     // Test streaming token chunks
     let stream_chunks = vec![
         "data: {\"token\": \"Authentication header: Bearer \"}\n\n",
-        "data: {\"token\": \"openclaw_sk_live_alpha9922\"}\n\n",
+        "data: {\"token\": \"aegis_sk_live_alpha9922\"}\n\n",
         "data: {\"token\": \" connected with postgres_master_secret_123\"}\n\n",
         "data: [DONE]\n\n",
     ];
@@ -921,15 +921,15 @@ fn test_vault_streaming_redaction_and_zero_disk_keys() {
         redacted_chunks.push(vault.redact_sensitive_text(chunk));
     }
 
-    assert!(!redacted_chunks[1].contains("openclaw_sk_live_alpha9922"));
+    assert!(!redacted_chunks[1].contains("aegis_sk_live_alpha9922"));
     assert!(redacted_chunks[1].contains(REDACTED_MARKER));
     assert!(!redacted_chunks[2].contains("postgres_master_secret_123"));
     assert!(redacted_chunks[2].contains(REDACTED_MARKER));
 
     // Multi-line response redaction
-    let multiline = "Error log:\nAuth: openclaw_sk_live_alpha9922\nDB: postgres_master_secret_123\nStatus: nominal";
+    let multiline = "Error log:\nAuth: aegis_sk_live_alpha9922\nDB: postgres_master_secret_123\nStatus: nominal";
     let redacted_multi = vault.redact_sensitive_text(multiline);
-    assert!(!redacted_multi.contains("openclaw_sk_live_alpha9922"));
+    assert!(!redacted_multi.contains("aegis_sk_live_alpha9922"));
     assert!(!redacted_multi.contains("postgres_master_secret_123"));
 
     // Verify zero disk secrets written

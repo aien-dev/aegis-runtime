@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== OpenClaw Preflight Verification ==="
+echo "=== AEGIS Preflight Verification ==="
 
 # 1. Branch Isolation
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -32,4 +32,4 @@ echo "[+] PASSED: Unslop standard verified (zero em dashes and zero en dashes)."
 echo "[*] Running cargo test..."
 cargo test --verbose
 
-echo "=== ALL OPENCLAW PREFLIGHT CHECKS PASSED ==="
+echo "=== ALL AEGIS PREFLIGHT CHECKS PASSED ==="

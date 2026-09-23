@@ -1,13 +1,13 @@
 #!/bin/sh
 set -eu
 
-# OpenClaw native binary installer
+# AEGIS native binary installer
 # Pure compiled Rust runtime for sovereign AI agents.
 
-REPO="aien-dev/openclaw-rs"
-BIN_NAME="openclaw"
-INSTALL_DIR="${OPENCLAW_INSTALL_DIR:-$HOME/.local/bin}"
-STAGED_DIR="${OPENCLAW_STAGED_DIR:-}"
+REPO="aien-dev/aegis-runtime"
+BIN_NAME="aegis"
+INSTALL_DIR="${AEGIS_INSTALL_DIR:-$HOME/.local/bin}"
+STAGED_DIR="${AEGIS_STAGED_DIR:-}"
 
 # Parse optional command-line arguments
 while [ $# -gt 0 ]; do
@@ -53,7 +53,7 @@ esac
 
 echo "[+] Platform: Linux ($ARCH)"
 
-TARBALL="openclaw-linux-${ARCH}.tar.gz"
+TARBALL="aegis-linux-${ARCH}.tar.gz"
 CHECKSUM_FILE="${TARBALL}.sha256"
 
 TMP_DIR="$(mktemp -d)"
@@ -70,7 +70,7 @@ if [ -n "$STAGED_DIR" ]; then
       cp "$STAGED_DIR/$CHECKSUM_FILE" "$TMP_DIR/$CHECKSUM_FILE"
     fi
   else
-    MATCHING="$(find "$STAGED_DIR" -maxdepth 1 -name "openclaw-*-linux-${ARCH}.tar.gz" 2>/dev/null | head -n 1)"
+    MATCHING="$(find "$STAGED_DIR" -maxdepth 1 -name "aegis-*-linux-${ARCH}.tar.gz" 2>/dev/null | head -n 1)"
     if [ -n "$MATCHING" ] && [ -f "$MATCHING" ]; then
       cp "$MATCHING" "$TMP_DIR/$TARBALL"
       if [ -f "${MATCHING}.sha256" ]; then

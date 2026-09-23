@@ -1,6 +1,6 @@
 ---
 name: Agent Defect
-about: Defect report for openclaw-rs runtime
+about: Defect report for aegis-runtime runtime
 title: "defect: "
 labels: ["defect", "agent-reported"]
 assignees: ""

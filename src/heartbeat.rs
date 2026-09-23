@@ -190,11 +190,11 @@ impl HeartbeatEngine {
             .args([
                 "record",
                 "--agent",
-                "OpenClaw",
+                "AEGIS",
                 "--action",
                 "heartbeat:pulse",
                 "--target",
-                "openclaw-heartbeat",
+                "aegis-heartbeat",
                 "--intent",
                 "Sovereign runtime heartbeat pulse",
                 "--vector",
@@ -221,7 +221,7 @@ impl HeartbeatEngine {
         let engine = self.clone();
         tokio::spawn(async move {
             info!(
-                "OpenClaw autonomous heartbeat loop started (period: {}s)",
+                "AEGIS autonomous heartbeat loop started (period: {}s)",
                 engine.interval_secs
             );
             let mut interval = tokio::time::interval(Duration::from_secs(engine.interval_secs));

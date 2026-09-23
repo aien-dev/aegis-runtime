@@ -1,4 +1,4 @@
-name: OpenClaw Binary Release Pipeline
+name: AEGIS Binary Release Pipeline
 
 on:
   push:
@@ -14,10 +14,10 @@ jobs:
     name: Build Linux x86_64
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout OpenClaw
+      - name: Checkout AEGIS
         uses: actions/checkout@v4
         with:
-          path: openclaw-rs
+          path: aegis-runtime
 
       - name: Checkout AIEN Sovereign Core Dependencies
         uses: actions/checkout@v4
@@ -29,23 +29,23 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Binary
-        working-directory: openclaw-rs
+        working-directory: aegis-runtime
         run: cargo build --release
 
       - name: Package Binary
-        working-directory: openclaw-rs
+        working-directory: aegis-runtime
         run: |
           mkdir -p dist
-          cp target/release/openclaw dist/openclaw
-          chmod +x dist/openclaw
-          tar -czf openclaw-linux-x86_64.tar.gz -C dist openclaw
-          sha256sum openclaw-linux-x86_64.tar.gz > openclaw-linux-x86_64.tar.gz.sha256
+          cp target/release/aegis dist/aegis
+          chmod +x dist/aegis
+          tar -czf aegis-linux-x86_64.tar.gz -C dist aegis
+          sha256sum aegis-linux-x86_64.tar.gz > aegis-linux-x86_64.tar.gz.sha256
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: openclaw-linux-x86_64
-          path: openclaw-rs/openclaw-linux-x86_64.*
+          name: aegis-linux-x86_64
+          path: aegis-runtime/aegis-linux-x86_64.*
 
   publish-release:
     name: Publish Release and Checksums
@@ -64,7 +64,7 @@ jobs:
       - name: Generate Checksums
         working-directory: release-artifacts
         run: |
-          sha256sum openclaw-linux-*.tar.gz > SHA256SUMS.txt
+          sha256sum aegis-linux-*.tar.gz > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Publish GitHub Release
@@ -76,9 +76,9 @@ jobs:
             TAG="v0.1.0"
           fi
           cd release-artifacts
-          gh release create "$TAG" openclaw-linux-*.tar.gz openclaw-linux-*.sha256 SHA256SUMS.txt \
-            --title "OpenClaw $TAG" \
-            --notes "Official binary release of OpenClaw native sovereign runtime." \
+          gh release create "$TAG" aegis-linux-*.tar.gz aegis-linux-*.sha256 SHA256SUMS.txt \
+            --title "AEGIS $TAG" \
+            --notes "Official binary release of AEGIS native sovereign runtime." \
             --draft=false \
             --prerelease=false || \
-          gh release upload "$TAG" openclaw-linux-*.tar.gz openclaw-linux-*.sha256 SHA256SUMS.txt --clobber
+          gh release upload "$TAG" aegis-linux-*.tar.gz aegis-linux-*.sha256 SHA256SUMS.txt --clobber
