@@ -3,7 +3,7 @@
 
 ## Overview
 - Repository: https://github.com/aien-dev/aegis-runtime
-- License: Sovereign Reciprocal Commons License (SRCL-1.0), Apache 2.0 with LLVM Exceptions and Reciprocal AI Weight Release.
+- License: Apache-2.0 WITH LLVM-exception, with the nonbinding COVENANT.md.
 - Language: Rust 2021 + Mojo 1.1
 - Runtime: Pure native compiled binaries. Zero Node.js. Zero Python daemons.
 
