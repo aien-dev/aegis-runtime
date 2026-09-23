@@ -238,8 +238,23 @@ impl WorkspaceCapability {
         Ok(canonical)
     }
 
-    /// Executes a shell command strictly within the validated workspace directory capability.
-    pub fn execute_shell(
+    /// The only shell entry. The membrane runs first. A command then has to
+    /// match a whole local form before the workspace-bound executor runs.
+    pub fn dispatch_shell(
+        &self,
+        command: &str,
+        cwd: Option<&str>,
+        timeout_secs: u64,
+    ) -> Result<String, SecurityError> {
+        let args = serde_json::json!({ "command": command });
+        crate::enforcement::pre_dispatch_check("bash_eval", &args)
+            .map_err(|reason| SecurityError::AccessDenied(reason))?;
+        admit_local_command(command)?;
+        self.execute_shell(command, cwd, timeout_secs)
+    }
+
+    /// Low-level executor. Callers use `dispatch_shell`.
+    pub(crate) fn execute_shell(
         &self,
         command: &str,
         cwd: Option<&str>,
@@ -290,6 +305,52 @@ impl WorkspaceCapability {
 
         Ok(stdout)
     }
+}
+
+/// A local command is one exact form from the catalog. The first word is not enough.
+pub fn admit_local_command(command: &str) -> Result<(), SecurityError> {
+    if command.chars().any(|c| {
+        matches!(
+            c,
+            ';' | '|'
+                | '&'
+                | '$'
+                | '<'
+                | '>'
+                | '`'
+                | '\\'
+                | '\n'
+                | '\r'
+                | '('
+                | ')'
+                | '{'
+                | '}'
+                | '!'
+                | '*'
+                | '?'
+                | '['
+                | ']'
+                | '\''
+                | '"'
+        )
+    }) {
+        return Err(SecurityError::AccessDenied(
+            "Command is not a local form. Shell joining, substitution, and quoting are not local execution.".to_string(),
+        ));
+    }
+    let argv: Vec<&str> = command.split_whitespace().collect();
+    let allowed = [
+        ["git", "status"].as_slice(),
+        ["git", "diff"].as_slice(),
+        ["git", "log", "-1", "--oneline"].as_slice(),
+        ["ls"].as_slice(),
+    ];
+    if allowed.iter().any(|form| form == &argv) {
+        return Ok(());
+    }
+    Err(SecurityError::AccessDenied(
+        "Command is not eligible for local shell. Local execution is only the catalogued forms: git status, git diff, git log -1 --oneline, and ls. Anything else needs a typed tool.".to_string(),
+    ))
 }
 
 pub fn normalize_path(path: &Path) -> PathBuf {
@@ -345,5 +406,28 @@ mod tests {
 
         let res = cap.execute_shell("ls", Some("/etc"), 5);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn local_catalog_requires_the_whole_command() {
+        assert!(admit_local_command("git status").is_ok());
+        assert!(admit_local_command("git diff").is_ok());
+        assert!(admit_local_command("ls").is_ok());
+        assert!(admit_local_command("git").is_err());
+        assert!(admit_local_command("git push").is_err());
+        assert!(admit_local_command("git status --porcelain").is_err());
+        assert!(admit_local_command("curl example.invalid").is_err());
+        assert!(admit_local_command("git status; curl example.invalid").is_err());
+        assert!(admit_local_command("echo $(curl example.invalid)").is_err());
+    }
+
+    #[test]
+    fn dispatch_shell_refuses_unclassified_text() {
+        let dir = tempdir().unwrap();
+        let cap = WorkspaceCapability::new(dir.path()).unwrap();
+        let refused = cap.dispatch_shell("echo hello", None, 5);
+        assert!(refused.is_err());
+        let allowed = cap.dispatch_shell("ls", None, 5);
+        assert!(allowed.is_ok());
     }
 }

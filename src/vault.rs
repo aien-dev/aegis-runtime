@@ -4,6 +4,15 @@ use std::sync::{Arc, Mutex};
 
 pub const REDACTED_MARKER: &str = "[REDACTED_BY_ATLAS_VAULT]";
 
+/// Development-only permission to read a credential from the process environment
+/// after atlas-vault does not answer. Unset means production: fail closed.
+pub fn dev_secret_fallback_enabled() -> bool {
+    matches!(
+        std::env::var("AIEN_DEV_SECRET_FALLBACK").ok().as_deref(),
+        Some("1") | Some("true") | Some("on")
+    )
+}
+
 #[derive(Clone)]
 pub struct VaultResolver {
     cache: Arc<Mutex<HashMap<String, String>>>,
@@ -43,14 +52,17 @@ impl VaultResolver {
             }
         }
 
-        // Check process environment variable as fallback
-        if let Ok(val) = std::env::var(key) {
-            cache.insert(key.to_string(), val.clone());
-            return Ok(val);
+        // Environment values are a development fallback only, and only when
+        // the operator turns that fallback on. Production stops here.
+        if dev_secret_fallback_enabled() {
+            if let Ok(val) = std::env::var(key) {
+                cache.insert(key.to_string(), val.clone());
+                return Ok(val);
+            }
         }
 
         Err(format!(
-            "Secret '{}' not found in hardware TPM vault or process environment",
+            "Secret '{}' was not returned by atlas-vault. VaultResolver is a client of atlas-vault, not a TPM. Process-environment fallback is off unless AIEN_DEV_SECRET_FALLBACK=1.",
             key
         ))
     }
@@ -89,9 +101,16 @@ impl VaultResolver {
 mod tests {
     use super::*;
 
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap()
+    }
+
     #[test]
     fn test_vault_resolution_and_redaction() {
+        let _guard = env_lock();
         let vault = VaultResolver::new();
+        std::env::set_var("AIEN_DEV_SECRET_FALLBACK", "1");
         std::env::set_var("TEST_TOKEN_SECRET", "super_secret_12345");
 
         let secret = vault.resolve_secret("TEST_TOKEN_SECRET").unwrap();
@@ -115,12 +134,24 @@ mod tests {
     }
 
     #[test]
+    fn production_does_not_read_the_environment() {
+        let _guard = env_lock();
+        std::env::set_var("AIEN_DEV_SECRET_FALLBACK", "0");
+        std::env::set_var("PROD_BLOCKED_SECRET", "should-not-resolve");
+        let vault = VaultResolver::new();
+        let err = vault.resolve_secret("PROD_BLOCKED_SECRET").unwrap_err();
+        assert!(err.contains("was not returned by atlas-vault"));
+        std::env::remove_var("PROD_BLOCKED_SECRET");
+    }
+
+    #[test]
     fn test_vault_missing_key_fallback() {
+        let _guard = env_lock();
         let vault = VaultResolver::new();
         let err = vault
             .resolve_secret("NONEXISTENT_KEY_12345_XYZ")
             .unwrap_err();
-        assert!(err.contains("not found in hardware TPM vault or process environment"));
+        assert!(err.contains("was not returned by atlas-vault"));
     }
 
     #[test]

@@ -38,8 +38,8 @@ Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration k
 4. **Mojo 1.1 SIMD Kernels**:
    Vector cosine similarity, Shannon entropy, and linear projection using Mojo SIMD vector primitives via C-ABI FFI (`libloading`).
 
-5. **Hardware TPM Vault**:
-   Zero plaintext secrets on disk. In-memory secret resolution via `atlas-vault` with automatic stream redaction (`[REDACTED_BY_ATLAS_VAULT]`).
+5. **Secret resolution**:
+   No plaintext secret files. `VaultResolver` asks `atlas-vault`, then keeps the value in memory. It is a client of that provider, not a TPM. The process environment is read only when `AIEN_DEV_SECRET_FALLBACK=1`. Output is redacted with `[REDACTED_BY_ATLAS_VAULT]`.
 
 6. **SQLite Persistence**:
    Embedded SQLite store running in Write-Ahead-Logging (WAL) mode for transactional task and message durability.

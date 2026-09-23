@@ -56,8 +56,8 @@ async fn test_embedded_structured_tool_calling_flow() {
     let simulated_model_output = r#"I need to check system health.
 ```json
 {
-  "name": "telemetry_ping",
-  "arguments": {}
+  "name": "bash_eval",
+  "arguments": {"command": "ls"}
 }
 ```"#;
 
@@ -71,7 +71,7 @@ async fn test_embedded_structured_tool_calling_flow() {
     let calls = tool_calls.unwrap();
     assert_eq!(calls.len(), 1);
     let call = &calls[0];
-    assert_eq!(call.function.name, "telemetry_ping");
+    assert_eq!(call.function.name, "bash_eval");
 
     let args: serde_json::Value = serde_json::from_str(&call.function.arguments).unwrap();
     let req = SkillExecutionRequest {
@@ -81,11 +81,11 @@ async fn test_embedded_structured_tool_calling_flow() {
     let exec_res = registry.execute(&req);
     assert!(
         exec_res.success,
-        "Tool execution must succeed: {:?}",
+        "Catalogued local command must succeed: {:?}",
         exec_res.error
     );
     let tool_output = exec_res.output;
-    assert!(tool_output.contains("healthy"));
+    assert!(!tool_output.is_empty());
 
     let multi_turn_messages = vec![
         json!({"role": "user", "content": "Ping the system"}),
@@ -106,7 +106,9 @@ async fn test_embedded_structured_tool_calling_flow() {
 
     let second_turn_prompt = format_messages_to_prompt(&multi_turn_messages, Some(&tools));
     assert!(second_turn_prompt.contains("[Tool Output]:"));
-    assert!(second_turn_prompt.contains("healthy"));
+    let sample = tool_output.lines().next().unwrap_or("");
+    assert!(!sample.is_empty());
+    assert!(second_turn_prompt.contains(sample));
     assert!(second_turn_prompt.ends_with("<|assistant|>\n"));
 }
 

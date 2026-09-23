@@ -9,6 +9,14 @@ pub struct SkillDefinition {
     pub name: String,
     pub description: String,
     pub parameters_schema: serde_json::Value,
+    /// False when the handler does not yet perform the contract. Those names
+    /// stay callable and return unavailable. They are not offered to the model.
+    #[serde(default = "default_advertised")]
+    pub advertised: bool,
+}
+
+fn default_advertised() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,10 +77,20 @@ impl SkillRegistry {
         map.values().map(|(def, _)| def.clone()).collect()
     }
 
+    pub fn advertised_skills(&self) -> Vec<SkillDefinition> {
+        self.list_skills()
+            .into_iter()
+            .filter(|def| def.advertised)
+            .collect()
+    }
+
     pub fn to_openai_tools(&self) -> Vec<serde_json::Value> {
         let map = self.skills.read().unwrap();
         let mut tools = Vec::new();
         for (def, _) in map.values() {
+            if !def.advertised {
+                continue;
+            }
             tools.push(serde_json::json!({
                 "type": "function",
                 "function": {
@@ -131,7 +149,7 @@ impl SkillRegistry {
         let bash_def = SkillDefinition {
             name: "bash_eval".to_string(),
             description: format!(
-                "Execute a command in the local bash shell strictly within authorized workspace root {}. Execution is confined by workspace capability.",
+                "Run one catalogued local command inside {}. Allowed forms are exactly: git status, git diff, git log -1 --oneline, and ls. This is not an OS sandbox.",
                 ws_bash.root().display()
             ),
             parameters_schema: serde_json::json!({
@@ -142,12 +160,13 @@ impl SkillRegistry {
                 },
                 "required": ["command"]
             }),
+            advertised: true,
         };
         self.register(bash_def, move |args| {
             let cmd = args.get("command").and_then(|c| c.as_str()).unwrap_or("");
             let cwd = args.get("cwd").and_then(|c| c.as_str());
             ws_bash
-                .execute_shell(cmd, cwd, 15)
+                .dispatch_shell(cmd, cwd, 15)
                 .map_err(|e| e.to_string())
         });
 
@@ -165,6 +184,7 @@ impl SkillRegistry {
                 },
                 "required": ["path"]
             }),
+            advertised: true,
         };
         self.register(read_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str()).unwrap_or("");
@@ -189,6 +209,7 @@ impl SkillRegistry {
                 },
                 "required": ["path", "content"]
             }),
+            advertised: true,
         };
         self.register(write_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str()).unwrap_or("");
@@ -216,6 +237,7 @@ impl SkillRegistry {
                     "path": { "type": "string", "description": "Directory path inside workspace root" }
                 }
             }),
+            advertised: true,
         };
         self.register(list_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str());
@@ -245,6 +267,7 @@ impl SkillRegistry {
                     "path": { "type": "string", "description": "Repository path inside workspace root" }
                 }
             }),
+            advertised: true,
         };
         self.register(git_def, move |args| {
             let path_str = args.get("path").and_then(|p| p.as_str());
@@ -279,35 +302,47 @@ impl SkillRegistry {
             ))
         });
 
-        // Builtin 6: cortex_recall
-        let cortex_def = SkillDefinition {
-            name: "cortex_recall".to_string(),
-            description: "Recall structured memory and lessons from local Spark Cortex engine"
-                .to_string(),
+        // cortex.search is the canonical tool. It is not connected, so it is
+        // not advertised. cortex_recall is the legacy alias and reports the same fact.
+        let search_def = SkillDefinition {
+            name: "cortex.search".to_string(),
+            description: "Search Cortex. Not connected.".to_string(),
             parameters_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "query": { "type": "string", "description": "Memory query or key to recall" }
+                    "query": { "type": "string", "description": "Memory query" }
                 },
                 "required": ["query"]
             }),
+            advertised: false,
         };
-        self.register(cortex_def, |args| {
-            let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
-            Ok(format!("Cortex memory queried for: {}", query))
+        self.register(search_def, |_| {
+            Err("Unavailable: cortex.search is not connected to a Cortex backend.".to_string())
+        });
+        let recall_def = SkillDefinition {
+            name: "cortex_recall".to_string(),
+            description: "Legacy alias of cortex.search. Not connected.".to_string(),
+            parameters_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Memory query" }
+                },
+                "required": ["query"]
+            }),
+            advertised: false,
+        };
+        self.register(recall_def, |_| {
+            Err("Unavailable: cortex.search is not connected to a Cortex backend.".to_string())
         });
 
-        // Builtin 7: telemetry_ping
         let ping_def = SkillDefinition {
             name: "telemetry_ping".to_string(),
-            description: "Retrieve local host and runtime telemetry".to_string(),
+            description: "Legacy host telemetry name. Not connected.".to_string(),
             parameters_schema: serde_json::json!({ "type": "object" }),
+            advertised: false,
         };
         self.register(ping_def, |_| {
-            Ok(
-                "{\"status\":\"healthy\",\"architecture\":\"aarch64\",\"target\":\"gb10\"}"
-                    .to_string(),
-            )
+            Err("Unavailable: telemetry.read is not connected to host telemetry.".to_string())
         });
     }
 }
@@ -327,8 +362,15 @@ mod tests {
             arguments: serde_json::json!({}),
         };
         let res = registry.execute(&req);
-        assert!(res.success);
-        assert!(res.output.contains("healthy"));
+        assert!(!res.success);
+        let err = res.error.unwrap_or_default();
+        assert!(err.contains("Unavailable"));
+        assert!(!registry
+            .to_openai_tools()
+            .iter()
+            .any(|tool| tool["function"]["name"] == "telemetry_ping"
+                || tool["function"]["name"] == "cortex_recall"
+                || tool["function"]["name"] == "cortex.search"));
     }
 
     #[test]

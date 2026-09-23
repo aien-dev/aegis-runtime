@@ -31,7 +31,7 @@ This Constitution establishes our foundational principles, our engineering stand
 ### Section 4. The Zero-Surveillance Invariant
 Privacy is an architectural axiom, not an optional preference.
 1. Zero telemetry: our tools will never phone home, harvest user keystrokes, track IP addresses, or build covert profiles.
-2. Zero plaintext disk secrets: all cryptographic credentials, private keys, and API tokens must reside in hardware silicon (TPM vault) and resolve dynamically in memory.
+2. No persistent plaintext credentials. Runtime credentials resolve in memory, preferring `atlas-vault`, with hardware-backed protection where that provider actually has it. The process environment is not a production source.
 3. Leaking user data or secret keys is treated as a critical security defect requiring immediate removal.
 
 ### Section 5. Open Knowledge and Sovereign Commons
@@ -89,7 +89,7 @@ Systems must learn and adapt continuously, but core identity must remain incorru
 To ensure that only those aligned with our cause contribute:
 
 1. **Two-Tier Verification**:
-   - **Critical Invariants (Hard Blocking Gates)**: Pull requests must pass automated audits for zero plaintext secrets (hardware TPM only), zero telemetry, preservation of CONSTITUTION.md, and license integrity. Violations result in automatic PR rejection.
+   - **Critical Invariants (Hard Blocking Gates)**: Pull requests must pass automated audits for zero plaintext secret files, zero telemetry, preservation of CONSTITUTION.md, and license integrity. Violations result in automatic PR rejection.
    - **Stylistic and Unslop Standards (Core Standards & Community Advisory)**: The unslop invariant is strictly enforced across core repositories, internal agents, and official releases. For outside community pull requests, style audits provide automated formatting suggestions rather than immediate rejection.
 2. **Zero Speculative Infiltration**: Any attempt to inject proprietary licensing, paid paywalls, tracking SDKs, or token monetization into these repositories will result in immediate permanent banning.
 3. **Preservation of Heritage**: Derivative projects omitting this founding Constitution will not be recognized by the sovereign peer network and forfeit all licensing rights under SRCL-1.0.
