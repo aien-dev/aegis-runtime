@@ -3,7 +3,7 @@ name = "aegis"
 version = "0.2.0"
 edition = "2021"
 authors = ["Drake Stapleton <aien@aienos.com>"]
-license = "AGPL-3.0-only"
+license = "Apache-2.0 WITH LLVM-exception"
 description = "Sovereign agent runtime with defense plane, context branching, and streaming gateway"
 repository = "https://github.com/aien-dev/aegis-runtime"
 

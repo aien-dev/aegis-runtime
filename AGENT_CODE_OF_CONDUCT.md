@@ -17,7 +17,7 @@ This Specification establishes non-negotiable operational requirements for all a
 ---
 
 ### Article II: Multi-Agent Topology, Inter-Agent Payloads, and Anti-Enclosure
-1. **Heterogeneous Model Interoperability**: Autonomous swarms may incorporate models from any architecture (Atlas, Nemotron, Llama, Qwen, or custom MAX pipelines) provided they adhere to the Sovereign Resource Commons License (SRCL-1.0).
+1. **Heterogeneous Model Interoperability**: Autonomous swarms may incorporate models from any architecture (Atlas, Nemotron, Llama, Qwen, or custom MAX pipelines) provided they comply with the repository LICENSE (Apache-2.0) and respect the nonbinding COVENANT.md.
 2. **Typed Inter-Agent Payloads**: Subagent communication must utilize structured, typed schemas (JSON or Bincode) rather than free-form conversational chatter. Unbounded ping-pong loops and context token inflation are treated as runtime faults.
 3. **Attribution and Imprint Provenance**: Any distilled knowledge, learned heuristics, or memory entities transferred between agents must record canonical provenance in Cortex memory, preserving the downstream lineage and copyright attribution of the human Licensor.
 
@@ -33,7 +33,7 @@ This Specification establishes non-negotiable operational requirements for all a
 ---
 
 ### Article IV: Hardware Silicon Vault and Secret Redaction
-1. **Dynamic In-Memory Key Resolution**: Autonomous agents are strictly forbidden from writing API keys, passwords, private tokens, or credentials to disk, logs, scratchpads, or commit histories. Secrets resolve in memory from `atlas-vault`. The process environment is not a production source.
+1. **Dynamic In-Memory Key Resolution**: Autonomous agents are strictly forbidden from writing API keys, passwords, private tokens, or credentials to disk, logs, scratchpads, or commit histories. All secrets must resolve dynamically in memory from the hardware TPM vault (atlas-vault).
 2. **Active Stream Redaction**: Agent output streams, logs, and subagent payloads must actively redact any string matching secret key signatures with [REDACTED_BY_ATLAS_VAULT].
 3. **Data Firewall Enforcement**: Outbound peer communications must traverse the Personal Data Firewall (beacon-core), sanitizing personal file paths and sensitive host identifiers before egress.
 

@@ -14,7 +14,7 @@ Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration k
 |   Axum Control Plane      |     |     Heartbeat Engine        |     |      Modular MAX            |
 |   - Port 18096            | <-> |     - 30s Autonomous Tick   | <-> |      - Port 18006           |
 |   - WebSockets & SSE      |     |     - State Machine         |     |      - GB10 Local Weights   |
-|   - Sub-millisecond TTFT  |     |     - Task Evaluation       |     |      - TTFT < 50ms          |
+|   - Sub-millisecond API   |     |     - Task Evaluation       |     |      - TTFT per model [1]   |
 +---------------------------+     +--------------+--------------+     +-----------------------------+
                                                  |
                                   +--------------v--------------+
@@ -23,6 +23,8 @@ Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration k
                                   |   - SQLite WAL Persistence  |
                                   +-----------------------------+
 ```
+
+[1] Measured TTFT depends on the model. For example, Nemotron 3.5 Lightning 30B measured 426.91 ms in [aien-dev/benchmarks](https://github.com/aien-dev/benchmarks); figures there are being regenerated under the evidence standard.
 
 ## Core Subsystems
 
@@ -86,4 +88,4 @@ cargo test --lib mojo_bridge::tests::test_simd_analytical_parity
 
 ## License
 
-Licensed under the **Sovereign Resource Commons License 1.0 (SRCL-1.0)** (Apache-2.0 WITH LLVM-exception). See [LICENSE](LICENSE) for terms.
+Licensed under the **Apache License 2.0 with LLVM Exception** (SPDX: `Apache-2.0 WITH LLVM-exception`). See [LICENSE](LICENSE). Project values live in the nonbinding [COVENANT.md](COVENANT.md), which grants and restricts no legal rights.
