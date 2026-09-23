@@ -121,9 +121,7 @@ fn resolve_inference_engine(
             None,
         )))
     } else {
-        info!(
-            "Binding AEGIS to in-process EmbeddedInferenceBackend (NativeTransformerBackend)..."
-        );
+        info!("Binding AEGIS to in-process EmbeddedInferenceBackend (NativeTransformerBackend)...");
         let backend = EmbeddedInferenceBackend::load_or_fallback(model_path, tokenizer_path)
             .map_err(|e| anyhow::anyhow!(e))?;
         info!(
