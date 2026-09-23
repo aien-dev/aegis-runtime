@@ -337,12 +337,12 @@ impl SkillRegistry {
 
         let ping_def = SkillDefinition {
             name: "telemetry_ping".to_string(),
-            description: "Legacy host telemetry name. Not connected.".to_string(),
+            description: "Legacy name. Not connected.".to_string(),
             parameters_schema: serde_json::json!({ "type": "object" }),
             advertised: false,
         };
         self.register(ping_def, |_| {
-            Err("Unavailable: telemetry.read is not connected to host telemetry.".to_string())
+            Err("Unavailable: telemetry.read is not connected.".to_string()) // no telemetry
         });
     }
 }
@@ -365,12 +365,11 @@ mod tests {
         assert!(!res.success);
         let err = res.error.unwrap_or_default();
         assert!(err.contains("Unavailable"));
-        assert!(!registry
-            .to_openai_tools()
-            .iter()
-            .any(|tool| tool["function"]["name"] == "telemetry_ping"
+        assert!(!registry.to_openai_tools().iter().any(
+            |tool| tool["function"]["name"] == "telemetry_ping" // no telemetry
                 || tool["function"]["name"] == "cortex_recall"
-                || tool["function"]["name"] == "cortex.search"));
+                || tool["function"]["name"] == "cortex.search"
+        ));
     }
 
     #[test]

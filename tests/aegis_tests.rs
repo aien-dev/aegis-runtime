@@ -266,7 +266,7 @@ async fn test_gateway_skills_endpoints() {
     let list: Value = serde_json::from_slice(&bytes).unwrap();
     let skills = list.as_array().unwrap();
     assert!(skills.iter().any(|s| s["name"] == "bash_eval"));
-    assert!(skills.iter().all(|s| s["name"] != "telemetry_ping"));
+    assert!(skills.iter().all(|s| s["name"] != "telemetry_ping")); // no telemetry
 
     // 2. Execute skill
     let app2 = create_router(state);

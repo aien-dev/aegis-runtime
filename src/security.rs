@@ -248,7 +248,7 @@ impl WorkspaceCapability {
     ) -> Result<String, SecurityError> {
         let args = serde_json::json!({ "command": command });
         crate::enforcement::pre_dispatch_check("bash_eval", &args)
-            .map_err(|reason| SecurityError::AccessDenied(reason))?;
+            .map_err(SecurityError::AccessDenied)?;
         admit_local_command(command)?;
         self.execute_shell(command, cwd, timeout_secs)
     }
