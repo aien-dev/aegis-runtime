@@ -497,35 +497,272 @@ mod tests {
         assert_eq!(MojoSimdBridge::cosine_similarity_fallback(&[], &[]), 0.0);
     }
 
-    #[test]
-    fn test_python_analytical_parity() {
-        let fixture_path = "tests/fixtures/simd_math_vectors.json";
-        if let Ok(data) = std::fs::read_to_string(fixture_path) {
-            let v: serde_json::Value = serde_json::from_str(&data).expect("Valid JSON fixture");
-            if let Some(entropy_cases) = v.get("entropy").and_then(|e| e.as_array()) {
-                for case in entropy_cases {
-                    let probs: Vec<f32> = case["probs"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|p| p.as_f64().unwrap() as f32)
-                        .collect();
-                    let expected = case["expected"].as_f64().unwrap() as f32;
-                    let p_arr = [probs[0], probs[1], probs[2], probs[3]];
-                    let fb = MojoSimdBridge::token_entropy_fallback(p_arr);
-                    assert!(
-                        (fb - expected).abs() < 1e-4,
-                        "Entropy fallback parity failure for {:?}",
-                        case["name"]
-                    );
-                    let live = MojoSimdBridge::token_entropy(p_arr);
-                    assert!(
-                        (live - expected).abs() < 1e-4,
-                        "Entropy live parity failure for {:?}",
-                        case["name"]
-                    );
-                }
+    fn f64_4(value: &serde_json::Value, key: &str) -> [f64; 4] {
+        let items = value[key].as_array().expect(key);
+        [
+            items[0].as_f64().unwrap(),
+            items[1].as_f64().unwrap(),
+            items[2].as_f64().unwrap(),
+            items[3].as_f64().unwrap(),
+        ]
+    }
+
+    fn f32_4(value: [f64; 4]) -> [f32; 4] {
+        [
+            value[0] as f32,
+            value[1] as f32,
+            value[2] as f32,
+            value[3] as f32,
+        ]
+    }
+
+    fn shannon_entropy_ref(probs: [f64; 4]) -> f64 {
+        let mut h = 0.0;
+        for p in probs {
+            if p > 1e-5 && p.is_finite() {
+                h -= p * p.ln();
             }
+        }
+        h
+    }
+
+    fn cosine_similarity_4d_ref(a: [f64; 4], b: [f64; 4]) -> f64 {
+        for x in a.into_iter().chain(b) {
+            if !x.is_finite() {
+                return 0.0;
+            }
+        }
+        let dot = a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
+        let norm_a = a.iter().map(|x| x * x).sum::<f64>();
+        let norm_b = b.iter().map(|x| x * x).sum::<f64>();
+        if norm_a <= 0.0 || norm_b <= 0.0 {
+            return 0.0;
+        }
+        let denom = norm_a.sqrt() * norm_b.sqrt();
+        if denom <= 0.0 {
+            return 0.0;
+        }
+        let res = dot / denom;
+        if res.is_finite() {
+            res
+        } else {
+            0.0
+        }
+    }
+
+    fn token_projection_ref(tokens: [f64; 4], weights: [f64; 4], bias: f64) -> f64 {
+        for x in tokens.into_iter().chain(weights) {
+            if !x.is_finite() {
+                return 0.0;
+            }
+        }
+        if !bias.is_finite() {
+            return 0.0;
+        }
+        tokens.iter().zip(weights).map(|(t, w)| t * w).sum::<f64>() + bias
+    }
+
+    fn temperature_scale_ref(logit: f64, temp: f64) -> f64 {
+        if !logit.is_finite() || !temp.is_finite() {
+            return 0.0;
+        }
+        if temp <= 1e-4 {
+            return logit;
+        }
+        let res = logit / temp;
+        if res.is_finite() {
+            res
+        } else {
+            logit
+        }
+    }
+
+    fn simd_accumulate_ref(base_val: f64, scale: f64, steps: i32) -> f64 {
+        if !base_val.is_finite() || !scale.is_finite() || steps <= 0 {
+            return 0.0;
+        }
+        let mut acc = [base_val, base_val * 1.5, base_val * 2.0, base_val * 2.5];
+        let step_vec = [scale, scale * 1.1, scale * 1.2, scale * 1.3];
+        let add_vec = [0.01, 0.02, 0.03, 0.04];
+        for _ in 0..steps {
+            for i in 0..4 {
+                acc[i] = acc[i] * step_vec[i] + add_vec[i];
+            }
+        }
+        acc.iter().sum()
+    }
+
+    fn assert_close(kind: &str, name: &serde_json::Value, got: f64, expected: f64, tol: f64) {
+        assert!(
+            (got - expected).abs() < tol,
+            "{kind} parity failure for {name}: got {got} expected {expected}"
+        );
+    }
+
+    #[test]
+    fn test_simd_analytical_parity() {
+        let data = std::fs::read_to_string("tests/fixtures/simd_math_vectors.json")
+            .expect("committed SIMD golden vectors");
+        let v: serde_json::Value = serde_json::from_str(&data).expect("valid JSON fixture");
+
+        for case in v["entropy"].as_array().expect("entropy cases") {
+            let probs = f64_4(case, "probs");
+            let golden = case["expected"].as_f64().unwrap();
+            let analytical = shannon_entropy_ref(probs);
+            assert_close(
+                "entropy analytical",
+                &case["name"],
+                analytical,
+                golden,
+                1e-12,
+            );
+            let arr = f32_4(probs);
+            assert_close(
+                "entropy fallback",
+                &case["name"],
+                f64::from(MojoSimdBridge::token_entropy_fallback(arr)),
+                golden,
+                1e-4,
+            );
+            assert_close(
+                "entropy kernel",
+                &case["name"],
+                f64::from(MojoSimdBridge::token_entropy(arr)),
+                golden,
+                1e-4,
+            );
+        }
+
+        for case in v["cosine"].as_array().expect("cosine cases") {
+            let a = f64_4(case, "a");
+            let b = f64_4(case, "b");
+            let golden = case["expected"].as_f64().unwrap();
+            assert_close(
+                "cosine analytical",
+                &case["name"],
+                cosine_similarity_4d_ref(a, b),
+                golden,
+                1e-12,
+            );
+            assert_close(
+                "cosine fallback",
+                &case["name"],
+                f64::from(MojoSimdBridge::cosine_similarity_4d_fallback(
+                    f32_4(a),
+                    f32_4(b),
+                )),
+                golden,
+                1e-4,
+            );
+            assert_close(
+                "cosine kernel",
+                &case["name"],
+                f64::from(MojoSimdBridge::cosine_similarity_4d(f32_4(a), f32_4(b))),
+                golden,
+                1e-4,
+            );
+        }
+
+        for case in v["projection"].as_array().expect("projection cases") {
+            let tokens = f64_4(case, "tokens");
+            let weights = f64_4(case, "weights");
+            let bias = case["bias"].as_f64().unwrap();
+            let golden = case["expected"].as_f64().unwrap();
+            assert_close(
+                "projection analytical",
+                &case["name"],
+                token_projection_ref(tokens, weights, bias),
+                golden,
+                1e-12,
+            );
+            assert_close(
+                "projection fallback",
+                &case["name"],
+                f64::from(MojoSimdBridge::token_projection_fallback(
+                    f32_4(tokens),
+                    f32_4(weights),
+                    bias as f32,
+                )),
+                golden,
+                1e-4,
+            );
+            assert_close(
+                "projection kernel",
+                &case["name"],
+                f64::from(MojoSimdBridge::token_projection(
+                    f32_4(tokens),
+                    f32_4(weights),
+                    bias as f32,
+                )),
+                golden,
+                1e-4,
+            );
+        }
+
+        for case in v["temperature"].as_array().expect("temperature cases") {
+            let logit = case["logit"].as_f64().unwrap();
+            let temp = case["temp"].as_f64().unwrap();
+            let golden = case["expected"].as_f64().unwrap();
+            assert_close(
+                "temperature analytical",
+                &case["name"],
+                temperature_scale_ref(logit, temp),
+                golden,
+                1e-12,
+            );
+            assert_close(
+                "temperature fallback",
+                &case["name"],
+                f64::from(MojoSimdBridge::temperature_scale_fallback(
+                    logit as f32,
+                    temp as f32,
+                )),
+                golden,
+                1e-4,
+            );
+            assert_close(
+                "temperature kernel",
+                &case["name"],
+                f64::from(MojoSimdBridge::temperature_scale(logit as f32, temp as f32)),
+                golden,
+                1e-4,
+            );
+        }
+
+        for case in v["accumulate"].as_array().expect("accumulate cases") {
+            let base_val = case["base_val"].as_f64().unwrap();
+            let scale = case["scale"].as_f64().unwrap();
+            let steps = case["steps"].as_i64().unwrap() as i32;
+            let golden = case["expected"].as_f64().unwrap();
+            assert_close(
+                "accumulate analytical",
+                &case["name"],
+                simd_accumulate_ref(base_val, scale, steps),
+                golden,
+                1e-9,
+            );
+            assert_close(
+                "accumulate fallback",
+                &case["name"],
+                f64::from(MojoSimdBridge::simd_accumulate_fallback(
+                    base_val as f32,
+                    scale as f32,
+                    steps,
+                )),
+                golden,
+                1e-4,
+            );
+            assert_close(
+                "accumulate kernel",
+                &case["name"],
+                f64::from(MojoSimdBridge::simd_accumulate(
+                    base_val as f32,
+                    scale as f32,
+                    steps,
+                )),
+                golden,
+                1e-4,
+            );
         }
     }
 }

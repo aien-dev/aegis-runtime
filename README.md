@@ -76,12 +76,12 @@ aegis status
 aegis sim-mojo
 ```
 
-## Mathematical Verification
+## Mathematical verification
 
-All SIMD mathematical kernels are formally checked against standard Python implementations:
+SIMD kernels are checked in Rust against an analytical reference and the committed vectors in `tests/fixtures/simd_math_vectors.json`:
+
 ```bash
-python3 tests/verify_simd_math.py
-cargo test --lib mojo_bridge
+cargo test --lib mojo_bridge::tests::test_simd_analytical_parity
 ```
 
 ## License
