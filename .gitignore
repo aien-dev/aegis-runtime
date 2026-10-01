@@ -4,4 +4,4 @@ target/
 *.sqlite-shm
 .env*
 *.jsonl
-.crumb
+.crumb.local

@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "name": "src/events",
+  "layer": "src/events",
+  "purpose": "Directory src/events. Purpose not yet described by a human.",
+  "above": {
+    "name": "src",
+    "path": ".."
+  },
+  "extensions": {
+    "seed": {
+      "purpose_auto": "Directory src/events. Purpose not yet described by a human.",
+      "files": [
+        "bus.rs",
+        "envelope.rs",
+        "event.rs",
+        "id.rs",
+        "mod.rs"
+      ]
+    },
+    "owner_lane": ""
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0.0",
+  "name": "src",
+  "layer": "src",
+  "purpose": "Directory src. Purpose not yet described by a human.",
+  "above": {
+    "name": "aegis-runtime",
+    "path": ".."
+  },
+  "below": [
+    {
+      "name": "defense",
+      "role": ""
+    },
+    {
+      "name": "events",
+      "role": ""
+    },
+    {
+      "name": "execution",
+      "role": ""
+    },
+    {
+      "name": "orchestration",
+      "role": ""
+    },
+    {
+      "name": "persistence",
+      "role": ""
+    },
+    {
+      "name": "sessions",
+      "role": ""
+    }
+  ],
+  "extensions": {
+    "seed": {
+      "purpose_auto": "Directory src. Purpose not yet described by a human.",
+      "files": [
+        "agent.rs",
+        "auth.rs",
+        "enforcement.rs",
+        "gateway.rs",
+        "heartbeat.rs",
+        "inference.rs",
+        "lib.rs",
+        "main.rs",
+        "mojo_bridge.rs",
+        "policy_guard.rs",
+        "security.rs",
+        "skills.rs",
+        "vault.rs"
+      ]
+    },
+    "owner_lane": ""
+  }
+}

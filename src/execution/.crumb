@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "name": "src/execution",
+  "layer": "src/execution",
+  "purpose": "Directory src/execution. Purpose not yet described by a human.",
+  "above": {
+    "name": "src",
+    "path": ".."
+  },
+  "extensions": {
+    "seed": {
+      "purpose_auto": "Directory src/execution. Purpose not yet described by a human.",
+      "files": [
+        "action.rs",
+        "broker.rs",
+        "mod.rs",
+        "receipt.rs"
+      ]
+    },
+    "owner_lane": ""
+  }
+}
