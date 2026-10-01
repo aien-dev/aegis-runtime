@@ -19,9 +19,7 @@ fn auth_header() -> String {
     format!("Bearer {}", TEST_OPERATOR_TOKEN)
 }
 
-fn authed_ws_request(
-    url: &str,
-) -> tokio_tungstenite::tungstenite::handshake::client::Request {
+fn authed_ws_request(url: &str) -> tokio_tungstenite::tungstenite::handshake::client::Request {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let mut req = url.into_client_request().unwrap();
     req.headers_mut()
@@ -406,7 +404,9 @@ async fn test_gateway_websocket_lifecycle() {
     });
 
     let ws_url = format!("ws://127.0.0.1:{}/ws", port);
-    let (mut ws_stream, _) = tokio_tungstenite::connect_async(authed_ws_request(&ws_url)).await.unwrap();
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(authed_ws_request(&ws_url))
+        .await
+        .unwrap();
 
     // 1. Welcome message
     let msg = ws_stream.next().await.unwrap().unwrap();
@@ -776,7 +776,9 @@ async fn test_gateway_websocket_lifecycle_ping_pong_and_close() {
     });
 
     let ws_url = format!("ws://127.0.0.1:{}/ws", port);
-    let (mut ws_stream, _) = tokio_tungstenite::connect_async(authed_ws_request(&ws_url)).await.unwrap();
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(authed_ws_request(&ws_url))
+        .await
+        .unwrap();
 
     // 1. Welcome frame
     let welcome_msg = ws_stream.next().await.unwrap().unwrap();

@@ -94,7 +94,11 @@ fn protected_routes() -> Vec<(&'static str, &'static str, Value)> {
             "/api/v1/tasks",
             json!({"task_type": "shell_exec", "payload": "ls"}),
         ),
-        ("POST", "/api/v1/agent/run", json!({"prompt": "hi", "max_turns": 1})),
+        (
+            "POST",
+            "/api/v1/agent/run",
+            json!({"prompt": "hi", "max_turns": 1}),
+        ),
         ("POST", "/api/v1/chat", json!({"prompt": "hi"})),
         ("POST", "/api/v1/heartbeat/tick", json!({})),
         (
@@ -183,7 +187,13 @@ async fn no_configured_token_means_protected_routes_are_closed() {
     for (method, uri, body) in protected_routes() {
         for headers in [vec![], bearer(""), bearer(TOKEN)] {
             let (status, _) = send(&state, method, uri, &headers, body.clone()).await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{} {}", method, uri);
+            assert_eq!(
+                status,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "{} {}",
+                method,
+                uri
+            );
         }
     }
     let (status, _) = send(&state, "GET", "/health", &[], json!({})).await;
@@ -194,7 +204,12 @@ async fn no_configured_token_means_protected_routes_are_closed() {
 async fn public_reads_stay_open() {
     let ws = tempfile::tempdir().unwrap();
     let state = state_with(authed(), ws.path());
-    for uri in ["/health", "/api/v1/health", "/api/v1/skills", "/api/v1/tasks"] {
+    for uri in [
+        "/health",
+        "/api/v1/health",
+        "/api/v1/skills",
+        "/api/v1/tasks",
+    ] {
         let (status, _) = send(&state, "GET", uri, &[], json!({})).await;
         assert_eq!(status, StatusCode::OK, "{}", uri);
     }
@@ -231,8 +246,14 @@ async fn correct_token_admits_catalogued_shell_only() {
         "git push",
         "ls -la /",
     ] {
-        let (status, body) =
-            send(&state, "POST", "/api/v1/shell", &alt, json!({ "command": cmd })).await;
+        let (status, body) = send(
+            &state,
+            "POST",
+            "/api/v1/shell",
+            &alt,
+            json!({ "command": cmd }),
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["success"], false, "{:?} ran", cmd);
     }
@@ -277,8 +298,10 @@ async fn websocket_handshake_needs_the_token() {
 
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let mut req = url.into_client_request().unwrap();
-    req.headers_mut()
-        .insert("authorization", format!("Bearer {}", TOKEN).parse().unwrap());
+    req.headers_mut().insert(
+        "authorization",
+        format!("Bearer {}", TOKEN).parse().unwrap(),
+    );
     assert!(tokio_tungstenite::connect_async(req).await.is_ok());
 }
 

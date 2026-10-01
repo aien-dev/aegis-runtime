@@ -110,7 +110,10 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 /// The token a request presents, if any.
 pub fn presented_token(headers: &HeaderMap) -> Option<&str> {
-    if let Some(v) = headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+    if let Some(v) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
         if let Some(rest) = v.strip_prefix("Bearer ") {
             return Some(rest.trim());
         }

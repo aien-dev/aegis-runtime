@@ -18,7 +18,10 @@ async fn strict_probe_threshold_refuses_on_every_path() {
     assert!(!res.success, "skill ran past the probe gate");
     assert!(res.error.unwrap_or_default().contains("probe"));
 
-    let shell = registry.workspace().dispatch_shell_gated("ls", None, 5).await;
+    let shell = registry
+        .workspace()
+        .dispatch_shell_gated("ls", None, 5)
+        .await;
     let err = shell.expect_err("shell ran past the probe gate");
     assert!(err.to_string().contains("probe"), "{}", err);
 

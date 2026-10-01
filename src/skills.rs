@@ -111,8 +111,7 @@ impl SkillRegistry {
     /// Membrane, then probe gate, then the handler. Every outside caller
     /// (HTTP, WebSocket, agent tool calls) uses this path.
     pub async fn execute_gated(&self, req: &SkillExecutionRequest) -> SkillExecutionResponse {
-        if let Err(reason) = crate::enforcement::probe_gate(&req.skill_name, &req.arguments).await
-        {
+        if let Err(reason) = crate::enforcement::probe_gate(&req.skill_name, &req.arguments).await {
             return SkillExecutionResponse {
                 success: false,
                 output: String::new(),
