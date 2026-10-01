@@ -180,7 +180,7 @@ impl AgentEngine {
                         arguments: args.clone(),
                     };
 
-                    let res = self.skills.execute(&req);
+                    let res = self.skills.execute_gated(&req).await;
                     let output_str = if res.success {
                         res.output.clone()
                     } else {

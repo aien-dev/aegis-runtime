@@ -12,6 +12,23 @@ use std::sync::Arc;
 use std::time::Instant;
 use tower::util::ServiceExt;
 
+/// Operator token used by the test gateway.
+pub const TEST_OPERATOR_TOKEN: &str = "test-operator-token-0123456789abcdef";
+
+fn auth_header() -> String {
+    format!("Bearer {}", TEST_OPERATOR_TOKEN)
+}
+
+fn authed_ws_request(
+    url: &str,
+) -> tokio_tungstenite::tungstenite::handshake::client::Request {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    let mut req = url.into_client_request().unwrap();
+    req.headers_mut()
+        .insert("authorization", auth_header().parse().unwrap());
+    req
+}
+
 async fn spawn_mock_inference_server() -> String {
     let app = axum::Router::new()
         .route(
@@ -107,6 +124,7 @@ async fn create_test_state() -> GatewayState {
         heartbeat,
         skills,
         agent,
+        operator: aegis::OperatorAuth::with_token(TEST_OPERATOR_TOKEN).unwrap(),
     }
 }
 
@@ -154,6 +172,7 @@ async fn test_gateway_openai_completions_endpoint() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(req_payload.to_string()))
                 .unwrap(),
@@ -190,6 +209,7 @@ async fn test_gateway_openai_multiturn_completions() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(req_payload.to_string()))
                 .unwrap(),
@@ -224,6 +244,7 @@ async fn test_gateway_openai_streaming_endpoint() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(req_payload.to_string()))
                 .unwrap(),
@@ -280,6 +301,7 @@ async fn test_gateway_skills_endpoints() {
             Request::builder()
                 .method("POST")
                 .uri("/api/v1/skills/execute")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(exec_payload.to_string()))
                 .unwrap(),
@@ -309,6 +331,7 @@ async fn test_gateway_shell_execution() {
             Request::builder()
                 .method("POST")
                 .uri("/api/v1/shell")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(req_payload.to_string()))
                 .unwrap(),
@@ -339,6 +362,7 @@ async fn test_gateway_task_creation_and_listing() {
             Request::builder()
                 .method("POST")
                 .uri("/api/v1/tasks")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(req_payload.to_string()))
                 .unwrap(),
@@ -353,6 +377,7 @@ async fn test_gateway_task_creation_and_listing() {
         .oneshot(
             Request::builder()
                 .uri("/api/v1/tasks")
+                .header("Authorization", auth_header())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -381,7 +406,7 @@ async fn test_gateway_websocket_lifecycle() {
     });
 
     let ws_url = format!("ws://127.0.0.1:{}/ws", port);
-    let (mut ws_stream, _) = tokio_tungstenite::connect_async(ws_url).await.unwrap();
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(authed_ws_request(&ws_url)).await.unwrap();
 
     // 1. Welcome message
     let msg = ws_stream.next().await.unwrap().unwrap();
@@ -465,6 +490,7 @@ async fn test_gateway_agent_run_endpoint() {
             Request::builder()
                 .method("POST")
                 .uri("/api/v1/agent/run")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(req_payload.to_string()))
                 .unwrap(),
@@ -560,6 +586,7 @@ async fn test_gateway_completions_error_handling_and_validation() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from("{ \"model\": invalid_syntax"))
                 .unwrap(),
@@ -581,6 +608,7 @@ async fn test_gateway_completions_error_handling_and_validation() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(missing_field_payload.to_string()))
                 .unwrap(),
@@ -600,6 +628,7 @@ async fn test_gateway_completions_error_handling_and_validation() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(empty_messages_payload.to_string()))
                 .unwrap(),
@@ -624,6 +653,7 @@ async fn test_gateway_completions_error_handling_and_validation() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(unsupported_model_payload.to_string()))
                 .unwrap(),
@@ -654,6 +684,7 @@ async fn test_gateway_openai_streaming_formatting_and_terminal_chunk() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -712,6 +743,7 @@ async fn test_gateway_agent_run_complex_payloads_and_edge_paths() {
             Request::builder()
                 .method("POST")
                 .uri("/api/v1/agent/run")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -744,7 +776,7 @@ async fn test_gateway_websocket_lifecycle_ping_pong_and_close() {
     });
 
     let ws_url = format!("ws://127.0.0.1:{}/ws", port);
-    let (mut ws_stream, _) = tokio_tungstenite::connect_async(ws_url).await.unwrap();
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(authed_ws_request(&ws_url)).await.unwrap();
 
     // 1. Welcome frame
     let welcome_msg = ws_stream.next().await.unwrap().unwrap();
@@ -1014,6 +1046,7 @@ async fn test_gateway_offline_inference_fail_closed() {
         heartbeat,
         skills,
         agent,
+        operator: aegis::OperatorAuth::with_token(TEST_OPERATOR_TOKEN).unwrap(),
     };
     let app = create_router(state);
 
@@ -1029,6 +1062,7 @@ async fn test_gateway_offline_inference_fail_closed() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", auth_header())
                 .header("Content-Type", "application/json")
                 .body(Body::from(req_payload.to_string()))
                 .unwrap(),
@@ -1083,6 +1117,7 @@ async fn test_gateway_probe_endpoint() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/probe")
+                .header("Authorization", auth_header())
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&payload).unwrap()))
                 .unwrap(),

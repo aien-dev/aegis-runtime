@@ -221,6 +221,7 @@ async fn test_gateway_with_embedded_inference_streaming() {
         heartbeat,
         skills,
         agent,
+        operator: aegis::OperatorAuth::with_token("embedded-test-operator-token-0123456789").unwrap(),
     };
     let app = create_router(state);
 
@@ -238,6 +239,7 @@ async fn test_gateway_with_embedded_inference_streaming() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/chat/completions")
+                .header("Authorization", "Bearer embedded-test-operator-token-0123456789")
                 .header("Content-Type", "application/json")
                 .body(Body::from(req_payload.to_string()))
                 .unwrap(),
