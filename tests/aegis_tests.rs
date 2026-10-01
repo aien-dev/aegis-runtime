@@ -19,6 +19,13 @@ fn auth_header() -> String {
     format!("Bearer {}", TEST_OPERATOR_TOKEN)
 }
 
+/// A catalogued local command that the always-on probe gate admits.
+/// The deterministic reference probe refuses `bash_eval` with `ls` (hash verdict:
+/// safety < 0.5, scope "unauthorized_escalation"), so tests that must see a
+/// successful run use `git status` (safety >= 0.5, scope "contained"). Tests
+/// run with the crate root as working directory, which is a git checkout.
+pub const PROBE_ADMITTED_COMMAND: &str = "git status";
+
 fn authed_ws_request(url: &str) -> tokio_tungstenite::tungstenite::handshake::client::Request {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let mut req = url.into_client_request().unwrap();
@@ -291,7 +298,7 @@ async fn test_gateway_skills_endpoints() {
     let app2 = create_router(state);
     let exec_payload = serde_json::json!({
         "skill_name": "bash_eval",
-        "arguments": {"command": "ls"}
+        "arguments": {"command": PROBE_ADMITTED_COMMAND}
     });
 
     let exec_res = app2
@@ -321,7 +328,7 @@ async fn test_gateway_shell_execution() {
     let app = create_router(state);
 
     let req_payload = serde_json::json!({
-        "command": "ls"
+        "command": PROBE_ADMITTED_COMMAND
     });
 
     let response = app
@@ -560,6 +567,7 @@ async fn test_gateway_concurrent_requests_under_tokio_spawns() {
                     });
                     let res = client_clone
                         .post(format!("{}/v1/chat/completions", base))
+                        .header("Authorization", auth_header())
                         .json(&payload)
                         .send()
                         .await
@@ -813,7 +821,7 @@ async fn test_gateway_websocket_lifecycle_ping_pong_and_close() {
         .send(tokio_tungstenite::tungstenite::Message::Text(
             serde_json::json!({
                 "type": "shell",
-                "command": "ls"
+                "command": PROBE_ADMITTED_COMMAND
             })
             .to_string(),
         ))
