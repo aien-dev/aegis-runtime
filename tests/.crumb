@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "name": "tests",
+  "layer": "tests",
+  "purpose": "Directory tests. Purpose not yet described by a human.",
+  "above": {
+    "name": "aegis-runtime",
+    "path": ".."
+  },
+  "below": [
+    {
+      "name": "fixtures",
+      "role": ""
+    }
+  ],
+  "extensions": {
+    "seed": {
+      "purpose_auto": "Directory tests. Purpose not yet described by a human.",
+      "files": [
+        "aegis_tests.rs",
+        "canonical_abi_tests.rs",
+        "embedded_inference_tests.rs",
+        "gateway_auth_tests.rs",
+        "policy_guard_tests.rs",
+        "probe_gate_tests.rs",
+        "stage2_primitives_tests.rs",
+        "stage3_4_persistence_tests.rs"
+      ]
+    },
+    "owner_lane": ""
+  }
+}

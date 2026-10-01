@@ -28,7 +28,7 @@ use crate::heartbeat::HeartbeatEngine;
 use crate::inference::InferenceEngine;
 use crate::mojo_bridge::MojoSimdBridge;
 use crate::persistence::Database;
-use crate::skills::{SkillExecutionRequest, SkillExecutionResponse, SkillRegistry};
+use crate::skills::{SkillExecutionRequest, SkillRegistry};
 
 #[derive(Clone)]
 pub struct GatewayState {
@@ -38,6 +38,8 @@ pub struct GatewayState {
     pub heartbeat: Arc<HeartbeatEngine>,
     pub skills: Arc<SkillRegistry>,
     pub agent: Arc<AgentEngine>,
+    /// Operator token checked on every non-public route.
+    pub operator: crate::auth::OperatorAuth,
 }
 
 #[derive(Serialize)]
@@ -388,7 +390,8 @@ pub async fn shell_handler(
     match state
         .skills
         .workspace()
-        .dispatch_shell(&payload.command, None, 15)
+        .dispatch_shell_gated(&payload.command, None, 15)
+        .await
     {
         Ok(stdout) => Ok(Json(ShellResponse {
             stdout,
@@ -455,17 +458,8 @@ pub async fn execute_skill_handler(
     State(state): State<GatewayState>,
     Json(req): Json<SkillExecutionRequest>,
 ) -> impl IntoResponse {
-    if let Some(threshold) = crate::enforcement::probe_threshold_from_env() {
-        let guard = crate::policy_guard::ProbePolicyGuard::new_reference(threshold);
-        if let Err(e) = guard.gate_skill(&req.skill_name, &req.arguments).await {
-            return Json(SkillExecutionResponse {
-                success: false,
-                output: String::new(),
-                error: Some(e.to_string()),
-            });
-        }
-    }
-    let res = state.skills.execute(&req);
+    // Membrane + probe gate (always on), then the handler.
+    let res = state.skills.execute_gated(&req).await;
     Json(res)
 }
 
@@ -537,7 +531,7 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
                                     skill_name: skill_name.to_string(),
                                     arguments: args,
                                 };
-                                let res = state.skills.execute(&req);
+                                let res = state.skills.execute_gated(&req).await;
                                 let out = json!({"type": "skill_result", "response": res});
                                 let _ = socket.send(Message::Text(out.to_string())).await;
                             }
@@ -564,7 +558,7 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
                             }
                             "shell" => {
                                 let cmd_str = parsed.get("command").and_then(|v| v.as_str()).unwrap_or("echo shell ready");
-                                let out = match state.skills.workspace().dispatch_shell(cmd_str, None, 15) {
+                                let out = match state.skills.workspace().dispatch_shell_gated(cmd_str, None, 15).await {
                                     Ok(stdout) => json!({
                                         "type": "shell_output",
                                         "stdout": stdout,
@@ -655,7 +649,10 @@ pub async fn probe_handler(
     }))
 }
 
+/// Every route sits behind `auth::require_operator`: deny by default, a short
+/// list of read-only GET routes is public, everything else needs the token.
 pub fn create_router(state: GatewayState) -> Router {
+    let operator = state.operator.clone();
     Router::new()
         .route("/health", get(health_handler))
         .route("/api/v1/health", get(health_handler))
@@ -677,6 +674,11 @@ pub fn create_router(state: GatewayState) -> Router {
         .route("/v1/probe", post(probe_handler))
         .route("/ws", get(ws_handler))
         .route("/api/v1/ws", get(ws_handler))
+        // Auth wraps every route (including unknown paths), inside CORS.
+        .layer(axum::middleware::from_fn_with_state(
+            operator,
+            crate::auth::require_operator,
+        ))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -686,12 +688,19 @@ pub fn create_router(state: GatewayState) -> Router {
         .with_state(state)
 }
 
+/// Listens on `addr`. Callers build it with `auth::resolve_bind_addr`, which
+/// refuses non-loopback addresses unless the operator opted in.
 pub async fn start_gateway(
     state: GatewayState,
-    port: u16,
+    addr: SocketAddr,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if !state.operator.is_configured() {
+        tracing::warn!(
+            "No operator token configured ({}); protected routes will refuse every request",
+            crate::auth::OPERATOR_TOKEN_ENV
+        );
+    }
     let app = create_router(state);
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("AEGIS Gateway listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -723,6 +732,7 @@ mod tests {
             heartbeat,
             skills,
             agent,
+            operator: crate::auth::OperatorAuth::disabled(),
         };
 
         let res = health_handler(State(state)).await.into_response();

@@ -180,7 +180,7 @@ impl AgentEngine {
                         arguments: args.clone(),
                     };
 
-                    let res = self.skills.execute(&req);
+                    let res = self.skills.execute_gated(&req).await;
                     let output_str = if res.success {
                         res.output.clone()
                     } else {
@@ -309,14 +309,15 @@ mod tests {
         let skills = Arc::new(SkillRegistry::new());
         let agent = AgentEngine::new(inference, skills.clone(), None);
 
-        // Test executing unknown tool directly via skills registry
+        // Unknown tool: the allowlist membrane (pre_dispatch_check) refuses it
+        // before the registry lookup, so the refusal names the allowlist.
         let unknown_req = SkillExecutionRequest {
             skill_name: "nonexistent_custom_skill".to_string(),
             arguments: json!({}),
         };
         let res = skills.execute(&unknown_req);
         assert!(!res.success);
-        assert!(res.error.unwrap().contains("not found in registry"));
+        assert!(res.error.unwrap().contains("not on the dispatch allowlist"));
 
         // Test tool parameter validation (e.g. read_file with empty path)
         let empty_path_req = SkillExecutionRequest {

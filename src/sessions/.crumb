@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "name": "src/sessions",
+  "layer": "src/sessions",
+  "purpose": "Directory src/sessions. Purpose not yet described by a human.",
+  "above": {
+    "name": "src",
+    "path": ".."
+  },
+  "extensions": {
+    "seed": {
+      "purpose_auto": "Directory src/sessions. Purpose not yet described by a human.",
+      "files": [
+        "id.rs",
+        "message.rs",
+        "mod.rs",
+        "session.rs",
+        "store.rs"
+      ]
+    },
+    "owner_lane": ""
+  }
+}

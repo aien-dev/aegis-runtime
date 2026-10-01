@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "name": "src/persistence",
+  "layer": "src/persistence",
+  "purpose": "Directory src/persistence. Purpose not yet described by a human.",
+  "above": {
+    "name": "src",
+    "path": ".."
+  },
+  "below": [
+    {
+      "name": "sqlite",
+      "role": ""
+    }
+  ],
+  "extensions": {
+    "seed": {
+      "purpose_auto": "Directory src/persistence. Purpose not yet described by a human.",
+      "files": [
+        "async_db.rs",
+        "error.rs",
+        "legacy.rs",
+        "mod.rs"
+      ]
+    },
+    "owner_lane": ""
+  }
+}

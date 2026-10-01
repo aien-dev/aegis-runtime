@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "name": "src/defense",
+  "layer": "src/defense",
+  "purpose": "Directory src/defense. Purpose not yet described by a human.",
+  "above": {
+    "name": "src",
+    "path": ".."
+  },
+  "extensions": {
+    "seed": {
+      "purpose_auto": "Directory src/defense. Purpose not yet described by a human.",
+      "files": [
+        "approval.rs",
+        "decision.rs",
+        "mod.rs",
+        "receipt.rs"
+      ]
+    },
+    "owner_lane": ""
+  }
+}

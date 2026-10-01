@@ -24,6 +24,15 @@ enum Commands {
     Serve {
         #[arg(short, long, default_value = "18096")]
         port: u16,
+        /// Listen address. Loopback by default; anything else needs --allow-non-loopback-bind.
+        #[arg(long, default_value = "127.0.0.1")]
+        bind: String,
+        /// Explicit opt-in to listen on a non-loopback address.
+        #[arg(long, default_value_t = false)]
+        allow_non_loopback_bind: bool,
+        /// File holding the operator token (else AEGIS_OPERATOR_TOKEN).
+        #[arg(long)]
+        operator_token_file: Option<String>,
         #[arg(long, default_value = "embedded")]
         inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
@@ -121,9 +130,7 @@ fn resolve_inference_engine(
             None,
         )))
     } else {
-        info!(
-            "Binding AEGIS to in-process EmbeddedInferenceBackend (NativeTransformerBackend)..."
-        );
+        info!("Binding AEGIS to in-process EmbeddedInferenceBackend (NativeTransformerBackend)...");
         let backend = EmbeddedInferenceBackend::load_or_fallback(model_path, tokenizer_path)
             .map_err(|e| anyhow::anyhow!(e))?;
         info!(
@@ -163,6 +170,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command.unwrap_or(Commands::Serve {
         port: 18096,
+        bind: "127.0.0.1".to_string(),
+        allow_non_loopback_bind: false,
+        operator_token_file: None,
         inference: "embedded".to_string(),
         max_url: "http://127.0.0.1:18006/v1/chat/completions".to_string(),
         model_path: None,
@@ -172,6 +182,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }) {
         Commands::Serve {
             port,
+            bind,
+            allow_non_loopback_bind,
+            operator_token_file,
             inference: inference_mode,
             max_url,
             model_path,
@@ -180,6 +193,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             heartbeat_secs,
         } => {
             info!("Initializing AEGIS engine on Grace Blackwell GB10...");
+            // Refuse a bad listen address or a malformed token before starting anything.
+            let addr = aegis::resolve_bind_addr(&bind, port, allow_non_loopback_bind)
+                .map_err(|e| anyhow::anyhow!(e))?;
+            let operator = aegis::OperatorAuth::load(operator_token_file.as_deref().map(Path::new))
+                .map_err(|e| anyhow::anyhow!(e))?;
             let db = Arc::new(Database::open(Path::new(&db_path))?);
             let inference = resolve_inference_engine(
                 &inference_mode,
@@ -208,10 +226,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 heartbeat: heartbeat.clone(),
                 skills: skills.clone(),
                 agent: agent.clone(),
+                operator,
             };
 
-            info!("Starting Axum sub-millisecond gateway on port {}", port);
-            start_gateway(state, port).await?;
+            info!("Starting Axum sub-millisecond gateway on {}", addr);
+            start_gateway(state, addr).await?;
         }
         Commands::Tick { db_path } => {
             info!("Executing single autonomous heartbeat tick...");

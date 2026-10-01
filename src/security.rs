@@ -253,6 +253,21 @@ impl WorkspaceCapability {
         self.execute_shell(command, cwd, timeout_secs)
     }
 
+    /// `dispatch_shell` behind the probe gate. HTTP, WebSocket and heartbeat
+    /// shell paths use this.
+    pub async fn dispatch_shell_gated(
+        &self,
+        command: &str,
+        cwd: Option<&str>,
+        timeout_secs: u64,
+    ) -> Result<String, SecurityError> {
+        let args = serde_json::json!({ "command": command });
+        crate::enforcement::probe_gate("bash_eval", &args)
+            .await
+            .map_err(SecurityError::AccessDenied)?;
+        self.dispatch_shell(command, cwd, timeout_secs)
+    }
+
     /// Low-level executor. Callers use `dispatch_shell`.
     pub(crate) fn execute_shell(
         &self,

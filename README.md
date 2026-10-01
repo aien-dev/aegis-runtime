@@ -60,8 +60,16 @@ cargo build --release
 
 ### Running the Gateway
 ```bash
-./target/release/aegis serve --bind 0.0.0.0:18096
+# Operator token: at least 32 printable characters, kept out of the repo.
+export AEGIS_OPERATOR_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+./target/release/aegis serve --port 18096
 ```
+
+Security defaults:
+- The gateway listens on 127.0.0.1 only. Any other address needs `--bind <ip> --allow-non-loopback-bind`.
+- Every route except a few read-only `GET` routes (`/health`, `/api/v1/health`, `/v1/models`, `/api/v1/skills`, `/api/v1/tasks`, `/api/v1/events`, `/events`) needs the operator token, sent as `Authorization: Bearer <token>` or `X-Aegis-Operator-Token: <token>`. This covers `/api/v1/shell`, `/api/v1/skills/execute`, every other `POST`, and the WebSocket. With no token configured those routes refuse every request. The token can also come from `--operator-token-file <path>`.
+- Skills and shell commands run only from an allowlist: the registered skill names, and for shell exactly `git status`, `git diff`, `git log -1 --oneline`, `ls`.
+- Probe gating runs on every skill and shell call. `AIEN_PROBE_ENFORCE=<0.5..1.0>` can only raise the threshold; it cannot turn gating off.
 
 ### CLI Commands
 ```bash

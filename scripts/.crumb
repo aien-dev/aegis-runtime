@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "name": "scripts",
+  "layer": "scripts",
+  "purpose": "Directory scripts. Purpose not yet described by a human.",
+  "above": {
+    "name": "aegis-runtime",
+    "path": ".."
+  },
+  "extensions": {
+    "seed": {
+      "purpose_auto": "Directory scripts. Purpose not yet described by a human.",
+      "files": [
+        "agent-preflight.sh"
+      ]
+    },
+    "owner_lane": ""
+  }
+}

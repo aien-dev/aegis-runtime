@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "name": "tests/fixtures",
+  "layer": "tests/fixtures",
+  "purpose": "Directory tests/fixtures. Purpose not yet described by a human.",
+  "above": {
+    "name": "tests",
+    "path": ".."
+  },
+  "extensions": {
+    "seed": {
+      "purpose_auto": "Directory tests/fixtures. Purpose not yet described by a human.",
+      "files": [
+        "simd_math_vectors.json"
+      ]
+    },
+    "owner_lane": ""
+  }
+}

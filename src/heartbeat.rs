@@ -128,7 +128,11 @@ impl HeartbeatEngine {
                         &task.payload
                     };
 
-                    let res_text = match self.workspace.dispatch_shell(cmd_to_run, None, 15) {
+                    let res_text = match self
+                        .workspace
+                        .dispatch_shell_gated(cmd_to_run, None, 15)
+                        .await
+                    {
                         Ok(stdout) => format!("Exit code 0: {}", stdout.trim()),
                         Err(e) => format!("Execution failure: {}", e),
                     };
