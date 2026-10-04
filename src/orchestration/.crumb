@@ -1,23 +1,35 @@
 {
-  "schema_version": "1.0.0",
-  "name": "src/orchestration",
-  "layer": "src/orchestration",
-  "purpose": "Directory src/orchestration. Purpose not yet described by a human.",
   "above": {
     "name": "src",
     "path": ".."
   },
   "extensions": {
+    "generated": {
+      "children": [],
+      "children_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compiled_at": "2026-10-04T18:13:51Z",
+      "compiler": "crumb-compile/1",
+      "digest": "sha256:0c08369b428afac636246de8b36637a58106c235df8524f3f01be1195cc70dbe",
+      "evidence_files": 0,
+      "evidence_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "files": 5,
+      "generated_at_commit": "7288fa65b22fe45e36a88f44150f21ed8781dc89",
+      "source_tree": "sha256:b0e17001d12b6199a624eca29181527851108d5157f2460ea610a4e4074a0f10"
+    },
+    "owner_lane": "",
     "seed": {
-      "purpose_auto": "Directory src/orchestration. Purpose not yet described by a human.",
       "files": [
         "budget.rs",
         "mod.rs",
         "run.rs",
         "termination.rs",
         "trigger.rs"
-      ]
-    },
-    "owner_lane": ""
-  }
+      ],
+      "purpose_auto": "Directory src/orchestration. Purpose not yet described by a human."
+    }
+  },
+  "layer": "src/orchestration",
+  "name": "src/orchestration",
+  "purpose": "Directory src/orchestration. Purpose not yet described by a human.",
+  "schema_version": "1.0.0"
 }
