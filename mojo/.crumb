@@ -1,19 +1,31 @@
 {
-  "schema_version": "1.0.0",
-  "name": "mojo",
-  "layer": "mojo",
-  "purpose": "Directory mojo. Purpose not yet described by a human.",
   "above": {
     "name": "aegis-runtime",
     "path": ".."
   },
   "extensions": {
+    "generated": {
+      "children": [],
+      "children_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compiled_at": "2026-10-04T18:13:51Z",
+      "compiler": "crumb-compile/1",
+      "digest": "sha256:49e79db936da2c48b45792dbf94788d88e700d04b44e19473cda4f62fccf33b3",
+      "evidence_files": 0,
+      "evidence_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "files": 1,
+      "generated_at_commit": "7288fa65b22fe45e36a88f44150f21ed8781dc89",
+      "source_tree": "sha256:919e7991c6997b4b97d3845194232f941b67070ee3a5fb243d2fcff9cac1e862"
+    },
+    "owner_lane": "",
     "seed": {
-      "purpose_auto": "Directory mojo. Purpose not yet described by a human.",
       "files": [
         "aegis_simd.mojo"
-      ]
-    },
-    "owner_lane": ""
-  }
+      ],
+      "purpose_auto": "Directory mojo. Purpose not yet described by a human."
+    }
+  },
+  "layer": "mojo",
+  "name": "mojo",
+  "purpose": "Directory mojo. Purpose not yet described by a human.",
+  "schema_version": "1.0.0"
 }

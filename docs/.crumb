@@ -1,19 +1,31 @@
 {
-  "schema_version": "1.0.0",
-  "name": "docs",
-  "layer": "docs",
-  "purpose": "Directory docs. Purpose not yet described by a human.",
   "above": {
     "name": "aegis-runtime",
     "path": ".."
   },
   "extensions": {
+    "generated": {
+      "children": [],
+      "children_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compiled_at": "2026-10-04T18:13:51Z",
+      "compiler": "crumb-compile/1",
+      "digest": "sha256:2d3aba84ec7059283089a3519c36336e7d148cbaffe44e02a6423c6c00303126",
+      "evidence_files": 0,
+      "evidence_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "files": 1,
+      "generated_at_commit": "7288fa65b22fe45e36a88f44150f21ed8781dc89",
+      "source_tree": "sha256:542eaba79ea3db3c1c44dafc78c0ccfacaecb99eaf630dd2beaf33dd4c78584d"
+    },
+    "owner_lane": "",
     "seed": {
-      "purpose_auto": "Directory docs. Purpose not yet described by a human.",
       "files": [
         "INNOVATIONS.md"
-      ]
-    },
-    "owner_lane": ""
-  }
+      ],
+      "purpose_auto": "Directory docs. Purpose not yet described by a human."
+    }
+  },
+  "layer": "docs",
+  "name": "docs",
+  "purpose": "Directory docs. Purpose not yet described by a human.",
+  "schema_version": "1.0.0"
 }
