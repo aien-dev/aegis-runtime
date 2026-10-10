@@ -101,12 +101,7 @@ pub struct SkillEffectProfile {
 pub fn skill_effect_profile(skill_name: &str) -> SkillEffectProfile {
     let idempotent = matches!(
         skill_name,
-        "read_file"
-            | "list_dir"
-            | "git_status"
-            | "cortex.search"
-            | "cortex_recall"
-            | "telemetry_ping"
+        "read_file" | "list_dir" | "git_status" | "cortex.search" | "cortex_recall"
     );
     SkillEffectProfile { idempotent }
 }
