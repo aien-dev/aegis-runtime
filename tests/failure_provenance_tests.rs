@@ -18,6 +18,7 @@ const SECRET: &str = "sk-live-SEEDED-SECRET-9f3a77";
 struct ScriptedModel {
     turns: Mutex<VecDeque<ChatTurnResponse>>,
     asked: AtomicUsize,
+    seen: Mutex<Vec<String>>,
 }
 
 impl ScriptedModel {
@@ -25,6 +26,7 @@ impl ScriptedModel {
         Arc::new(Self {
             turns: Mutex::new(turns.into()),
             asked: AtomicUsize::new(0),
+            seen: Mutex::new(Vec::new()),
         })
     }
 }
@@ -86,12 +88,16 @@ impl InferenceEngine for ScriptedModel {
     }
     async fn generate_chat_with_tools(
         &self,
-        _m: &[serde_json::Value],
+        m: &[serde_json::Value],
         _tools: Option<&[serde_json::Value]>,
         _t: Option<f32>,
         _x: Option<u32>,
     ) -> Result<ChatTurnResponse, Box<dyn std::error::Error + Send + Sync>> {
         self.asked.fetch_add(1, Ordering::SeqCst);
+        self.seen
+            .lock()
+            .unwrap()
+            .push(serde_json::to_string(m).unwrap());
         Ok(self.turns.lock().unwrap().pop_front().unwrap_or_else(done))
     }
     async fn stream_chat(
@@ -504,6 +510,10 @@ async fn uncertain_or_mutating_failures_are_never_retried() {
         ("write_file", ToolFault::rejected("refused")),
         (
             "read_file",
+            ToolFault::rejected("not on the dispatch allowlist"),
+        ),
+        (
+            "read_file",
             ToolFault::new(FailureClass::Uncertain, EffectCertainty::Uncertain, "lost"),
         ),
         (
@@ -584,20 +594,33 @@ async fn seeded_secret_never_appears_in_failure_output() {
     )]);
     let bus = EventBus::default();
     let mut rx = bus.subscribe();
-    let res = engine(
-        ScriptedModel::new(vec![calls(&[("w", "write_file", args)]), done()]),
-        script,
-    )
-    .with_event_bus(bus, None)
-    .execute_task("goal", Some("sys"), 3)
-    .await
-    .unwrap();
+    let model = ScriptedModel::new(vec![calls(&[("w", "write_file", args)]), done()]);
+    let res = engine(model.clone(), script)
+        .with_event_bus(bus, None)
+        .execute_task("goal", Some("sys"), 3)
+        .await
+        .unwrap();
     let f = res.steps[0].tool_calls[0].failure.as_ref().unwrap();
     let ser = serde_json::to_string(f).unwrap();
     let dbg = format!("{:?}", f);
     assert!(!ser.contains(SECRET), "serialized: {}", ser);
     assert!(!dbg.contains(SECRET), "debug: {}", dbg);
     assert!(ser.contains("sha256:"));
+    // The tool message sent back to the model and the record output are redacted too.
+    assert!(!res.steps[0].tool_calls[0].output.contains(SECRET));
+    assert!(res.steps[0].tool_calls[0].output.contains("[redacted]"));
+    assert!(model.seen.lock().unwrap().len() >= 2);
+    // The model's own earlier tool call (its arguments) is history it wrote; the
+    // tool result message that we send back must be redacted.
+    let mut tool_msgs = 0;
+    for seen in model.seen.lock().unwrap().iter() {
+        let msgs: Vec<serde_json::Value> = serde_json::from_str(seen).unwrap();
+        for m in msgs.iter().filter(|m| m["role"] == "tool") {
+            tool_msgs += 1;
+            assert!(!m["content"].as_str().unwrap().contains(SECRET));
+        }
+    }
+    assert!(tool_msgs >= 1);
     let ev = rx.try_recv().unwrap();
     assert!(!serde_json::to_string(&ev).unwrap().contains(SECRET));
     assert!(!format!("{:?}", ev).contains(SECRET));

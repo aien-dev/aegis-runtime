@@ -16,7 +16,7 @@ Upstream mapping: aien-mcp `Rejected` is `Rejected` + `NoEffect`; `Uncertain` is
 
 ## Retry rule
 
-An automatic retry happens only when all hold: class is Rejected or Unavailable, certainty is NoEffect,
+An automatic retry happens only when all hold: class is Unavailable (never Rejected: a policy or gate denial is not retried), certainty is NoEffect,
 the skill is on the idempotent list (`skill_effect_profile`), and `RetryPolicy.max_attempts` is above 1
 (default 1, ceiling 5). Every attempt is a new dispatch through the gated path (probe gate, allowlist,
 handler). Timeout, Cancelled, Uncertain, Failed, Malformed and ApprovalPending are never retried.
@@ -56,6 +56,10 @@ parent_call_id (the directly preceding failed call, a causal hint), tool_name, a
 effect_certainty, created_at (call scheduled, ms), failed_at (ms), cause (max 8 entries, each message at most
 512 bytes, payload stored only as a sha256 digest, argument strings echoed in messages replaced by `[redacted]`),
 cause_truncated.
+
+Tool error text sent back to the model and stored in `ToolExecutionRecord.output` passes through the same
+redaction as the failure record. `ToolExecutionRecord.arguments` is unchanged and still holds the raw arguments
+(pre-existing behaviour, not part of this change).
 
 `ToolExecutionRecord.failure` holds the terminal record; `retry_failures` holds earlier failed attempts.
 Both default to empty so older persisted JSON still loads. Every failed attempt is also published as

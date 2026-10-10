@@ -326,7 +326,7 @@ impl AgentEngine {
 
                     let (output_str, success) = match &result {
                         Ok(out) => (out.clone(), true),
-                        Err(fault) => (fault.message.clone(), false),
+                        Err(fault) => (redact_payload_echoes(&fault.message, &args), false),
                     };
                     let failure = if success { None } else { failure_records.pop() };
 

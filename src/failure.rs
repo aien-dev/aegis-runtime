@@ -71,16 +71,17 @@ impl Default for RetryPolicy {
     }
 }
 
-/// Pure retry rule. A retry is possible only when the source refused or was
-/// unreachable before acting, no effect occurred, the capability is marked
-/// idempotent, and the policy allows more than one attempt.
+/// Pure retry rule. A retry is possible only when the backend was unreachable
+/// before acting (`Unavailable`), no effect occurred, the capability is marked
+/// idempotent, and the policy allows more than one attempt. A `Rejected`
+/// outcome (policy or gate denial) is never retried.
 pub fn retry_eligibility(
     class: FailureClass,
     certainty: EffectCertainty,
     idempotent: bool,
     policy: &RetryPolicy,
 ) -> RetryEligibility {
-    let class_ok = matches!(class, FailureClass::Rejected | FailureClass::Unavailable);
+    let class_ok = class == FailureClass::Unavailable;
     let attempts = policy.max_attempts.min(MAX_ATTEMPTS_CEILING);
     if class_ok && certainty == EffectCertainty::NoEffect && idempotent && attempts > 1 {
         RetryEligibility::Retryable {
@@ -452,9 +453,7 @@ mod tests {
                 for idem in [true, false] {
                     let got = retry_eligibility(c, e, idem, &policy);
                     let expect_retry =
-                        matches!(c, FailureClass::Rejected | FailureClass::Unavailable)
-                            && e == EffectCertainty::NoEffect
-                            && idem;
+                        c == FailureClass::Unavailable && e == EffectCertainty::NoEffect && idem;
                     assert_eq!(
                         got == RetryEligibility::Retryable { max_attempts: 3 },
                         expect_retry,
@@ -472,7 +471,12 @@ mod tests {
     fn default_policy_never_retries_and_ceiling_applies() {
         let d = RetryPolicy::default();
         assert_eq!(
-            retry_eligibility(FailureClass::Rejected, EffectCertainty::NoEffect, true, &d),
+            retry_eligibility(
+                FailureClass::Unavailable,
+                EffectCertainty::NoEffect,
+                true,
+                &d
+            ),
             RetryEligibility::NotRetryable
         );
         let big = RetryPolicy { max_attempts: 1000 };
