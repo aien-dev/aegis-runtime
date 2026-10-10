@@ -32,6 +32,10 @@ pub use inference::{
     ProtocolInferenceBackend, ToolCallFunction, ToolCallItem,
 };
 pub use mojo_bridge::MojoSimdBridge;
+pub use orchestration::workflow::{
+    TaskId, TaskOutcome, TaskRunner, TaskState, WorkflowConfig, WorkflowError, WorkflowExecutor,
+    WorkflowReport, WorkflowSpec, WorkflowStatus,
+};
 pub use orchestration::{Run, RunBudget, RunState, TerminationReason, Trigger};
 pub use persistence::{
     AsyncDatabase, CrumbRecord, Database, PersistenceError, SqliteActionStore, SqliteApprovalStore,
