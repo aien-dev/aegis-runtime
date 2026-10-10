@@ -40,7 +40,7 @@
         },
         {
           "digest": "14dd72b905c79d44b86b01f4ab43763cf21520fd4e38f077b682e35268010d17",
-          "last_commit": "8cba4a8",
+          "last_commit": "0a956be",
           "name": "events",
           "purpose": "Directory src/events. Purpose not yet described by a human."
         },
@@ -51,8 +51,8 @@
           "purpose": "Directory src/execution. Purpose not yet described by a human."
         },
         {
-          "digest": "2f0cb472c464c96c0c999130c8462db46bbeaf6a8b1d770ff2ff502e24b84500",
-          "last_commit": "8cba4a8",
+          "digest": "c994eac17bd5e8da3a1f9e91ee112dd353fafc7756c9706cef7eb1954f5f2d1d",
+          "last_commit": "7be8b4b",
           "name": "orchestration",
           "purpose": "Directory src/orchestration. Purpose not yet described by a human."
         },
@@ -69,15 +69,15 @@
           "purpose": "Directory src/sessions. Purpose not yet described by a human."
         }
       ],
-      "children_root": "sha256:a59ed6eb87f1c402e863353ec922d5962090251ec943c0389b96c1ffa11a5a8e",
-      "compiled_at": "2026-10-10T16:05:01Z",
+      "children_root": "sha256:af95fafcd57d595dacdc278a75abcc274f666cc995a97fa23b7b03ba2626d9c8",
+      "compiled_at": "2026-10-10T16:23:18Z",
       "compiler": "crumb-compile/1",
-      "digest": "sha256:abb952194a8ed23126dc8163ce4697adab26469a76f1945838adb525cc09017a",
+      "digest": "sha256:3ba2f83f6464f4b188455f5f3fdfb5da1e845e36f314b7534423c5845467965a",
       "evidence_files": 0,
       "evidence_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "files": 49,
-      "generated_at_commit": "e21dab3edbdededb2396a74d0614c797b912bb6a",
-      "source_tree": "sha256:cbff5b20541baaf2bbd1db819692230be1d361a6ff77a3c4610847c5a62a47d2"
+      "generated_at_commit": "7be8b4b8c9c0aa061d85694997d5c5063fadd264",
+      "source_tree": "sha256:a23d0652ba2519f30a2779a97f29d863c1a9d280e364d067d35a32909c617d59"
     },
     "owner_lane": "",
     "seed": {
