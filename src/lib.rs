@@ -3,6 +3,7 @@ pub mod auth;
 pub mod defense;
 pub mod events;
 pub mod execution;
+pub mod failure;
 pub mod gateway;
 pub mod heartbeat;
 pub mod inference;
@@ -14,11 +15,16 @@ pub mod sessions;
 pub mod skills;
 pub mod vault;
 
-pub use agent::{AgentEngine, AgentExecutionResult, AgentStep};
+pub use agent::{AgentEngine, AgentExecutionResult, AgentStep, FailurePolicy, ToolExecutionRecord};
 pub use auth::{resolve_bind_addr, OperatorAuth};
 pub use defense::{Approval, ApprovalStatus, ContainmentLevel, DefenseReceipt, DoctrineDecision};
 pub use events::{AegisEvent, EventBus, EventEnvelope, EventId, EventSubscriber};
 pub use execution::{Action, ActionReceipt, ActionRequest, ActionStatus, ExecutionAuthority};
+pub use failure::{
+    retry_eligibility, root_cause, skill_effect_profile, AttemptFailure, CancelToken, CauseEntry,
+    EffectCertainty, FailureClass, FailureRecord, RetryEligibility, RetryPolicy, ToolDispatcher,
+    ToolFault,
+};
 pub use gateway::{create_router, start_gateway, GatewayState, HealthResponse};
 pub use heartbeat::{HeartbeatEngine, PulseReceipt};
 pub use inference::{

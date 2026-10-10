@@ -30,6 +30,12 @@ pub enum AegisEvent {
         error: String,
     },
 
+    /// A tool call failed. Carries the structured provenance record; never
+    /// carries raw tool arguments. Does not map to a canonical agent event.
+    StepFailed {
+        failure: crate::failure::FailureRecord,
+    },
+
     AssistantDelta {
         text: String,
     },
