@@ -594,3 +594,267 @@ async fn demo_code_test_eval_dag_sequential_vs_parallel() {
         ));
     }
 }
+
+fn gapless(r: &aegis::WorkflowReport) {
+    let seqs: Vec<u64> = r.events.iter().map(|e| e.seq).collect();
+    assert_eq!(seqs, (1..=seqs.len() as u64).collect::<Vec<_>>());
+    assert_eq!(r.snapshot.last_seq, seqs.len() as u64);
+}
+
+fn agent_result(
+    calls: Vec<aegis::ToolExecutionRecord>,
+    completed: bool,
+) -> aegis::AgentExecutionResult {
+    aegis::AgentExecutionResult {
+        final_response: "done".into(),
+        steps: vec![aegis::AgentStep {
+            step_index: 0,
+            thought: None,
+            tool_calls: calls,
+        }],
+        turns_taken: 1,
+        duration_ms: 0,
+        completed,
+    }
+}
+
+fn call(success: bool) -> aegis::ToolExecutionRecord {
+    aegis::ToolExecutionRecord {
+        call_id: "c1".into(),
+        tool_name: "t".into(),
+        arguments: serde_json::json!({}),
+        output: String::new(),
+        success,
+        failure: None,
+        retry_failures: vec![],
+    }
+}
+
+#[test]
+fn agent_outcome_unrecorded_failure_is_failed_and_uncertain() {
+    use aegis::orchestration::workflow::agent_outcome;
+    // success=false with no failure record must never read as success.
+    match agent_outcome(&agent_result(vec![call(false)], true)) {
+        TaskOutcome::Failed(f) => {
+            assert_eq!(f.class, FailureClass::Failed);
+            assert_eq!(f.certainty, EffectCertainty::Uncertain);
+        }
+        other => panic!("expected Failed, got {other:?}"),
+    }
+    // Control: a clean completed run is still success.
+    assert!(matches!(
+        agent_outcome(&agent_result(vec![call(true)], true)),
+        TaskOutcome::Completed(_)
+    ));
+    // Incomplete run stays Failed/Uncertain.
+    assert!(matches!(
+        agent_outcome(&agent_result(vec![call(true)], false)),
+        TaskOutcome::Failed(_)
+    ));
+}
+
+#[tokio::test]
+async fn cancel_while_waiting_for_approval_leaves_nothing_unfinished() {
+    let p = Probe::new();
+    let spec = b()
+        .add_task(
+            "gate",
+            &[],
+            runner_fn(|_c| Box::pin(async { TaskOutcome::ApprovalPending })),
+        )
+        .unwrap()
+        .add_task("after", &["gate"], p.task("after", 1))
+        .unwrap()
+        .add_task(
+            "long",
+            &[],
+            runner_fn(|c: TaskContext| {
+                Box::pin(async move {
+                    c.cancel.cancelled().await;
+                    TaskOutcome::Cancelled
+                })
+            }),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+    let cancel = CancelToken::new();
+    let c2 = cancel.clone();
+    let exec = WorkflowExecutor::new(cfg(2))
+        .unwrap()
+        .with_cancel_token(cancel);
+    let h = tokio::spawn(async move { exec.run(spec).await });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    c2.cancel();
+    let r = h.await.unwrap();
+    assert_eq!(r.status, WorkflowStatus::Cancelled);
+    assert_eq!(r.snapshot.states[&tid("gate")], TaskState::Cancelled);
+    assert_eq!(r.snapshot.states[&tid("after")], TaskState::Cancelled);
+    assert_eq!(r.snapshot.states[&tid("long")], TaskState::Cancelled);
+    assert!(r.unfinished.is_empty(), "unfinished: {:?}", r.unfinished);
+    assert_eq!(p.runs("after"), 0);
+    gapless(&r);
+}
+
+#[tokio::test]
+async fn budget_exhaustion_does_not_cancel_the_callers_token() {
+    let spec = b()
+        .add_task("slow", &[], ok(10_000))
+        .unwrap()
+        .build()
+        .unwrap();
+    let caller = CancelToken::new();
+    let mut c = cfg(1);
+    c.total_budget = Some(Duration::from_millis(40));
+    let r = WorkflowExecutor::new(c)
+        .unwrap()
+        .with_cancel_token(caller.clone())
+        .run(spec)
+        .await;
+    assert!(r.budget_exhausted);
+    assert_eq!(r.status, WorkflowStatus::Cancelled);
+    assert!(!caller.is_cancelled(), "executor must only read the token");
+}
+
+#[tokio::test]
+async fn caller_cancel_still_stops_the_workflow_through_the_run_token() {
+    let spec = b()
+        .add_task("slow", &[], ok(10_000))
+        .unwrap()
+        .build()
+        .unwrap();
+    let caller = CancelToken::new();
+    caller.cancel();
+    let r = WorkflowExecutor::new(cfg(1))
+        .unwrap()
+        .with_cancel_token(caller)
+        .run(spec)
+        .await;
+    assert_eq!(r.status, WorkflowStatus::Cancelled);
+    assert_eq!(r.snapshot.states[&tid("slow")], TaskState::Cancelled);
+}
+
+#[tokio::test]
+async fn no_task_starts_once_the_budget_is_exhausted() {
+    let p = Probe::new();
+    let spec = b()
+        .add_task("a", &[], p.task("a", 1))
+        .unwrap()
+        .add_task("b", &["a"], p.task("b", 1))
+        .unwrap()
+        .build()
+        .unwrap();
+    let mut c = cfg(2);
+    c.total_budget = Some(Duration::ZERO);
+    let r = WorkflowExecutor::new(c).unwrap().run(spec).await;
+    assert!(r.budget_exhausted);
+    assert_eq!(r.status, WorkflowStatus::Cancelled);
+    assert_eq!(p.runs("a") + p.runs("b"), 0, "nothing may start");
+    assert!(r.unfinished.is_empty());
+    gapless(&r);
+}
+
+#[tokio::test]
+async fn dependents_do_not_start_when_the_budget_expires_as_a_task_finishes() {
+    let p = Probe::new();
+    // "first" outlives the 30 ms budget, so its dependent must never start
+    // even though "first" itself completes normally.
+    let spec = b()
+        .add_task(
+            "first",
+            &[],
+            runner_fn(|_c| {
+                Box::pin(async {
+                    // Blocks the thread past the deadline, then returns
+                    // without yielding to the timer.
+                    std::thread::sleep(Duration::from_millis(80));
+                    TaskOutcome::Completed(serde_json::json!(1))
+                })
+            }),
+        )
+        .unwrap()
+        .add_task("second", &["first"], p.task("second", 1))
+        .unwrap()
+        .build()
+        .unwrap();
+    let mut c = cfg(1);
+    c.total_budget = Some(Duration::from_millis(30));
+    let r = WorkflowExecutor::new(c).unwrap().run(spec).await;
+    assert_eq!(p.runs("second"), 0, "no task starts after the budget");
+    assert!(r.budget_exhausted);
+    assert!(r.unfinished.is_empty());
+    gapless(&r);
+}
+
+#[tokio::test]
+async fn panicking_task_is_failed_uncertain_and_releases_its_permit() {
+    let p = Probe::new();
+    let spec = b()
+        .add_task(
+            "boom",
+            &[],
+            runner_fn(|_c| {
+                Box::pin(async {
+                    if true {
+                        panic!("task body panic (expected in this test)");
+                    }
+                    TaskOutcome::Cancelled
+                })
+            }),
+        )
+        .unwrap()
+        .add_task("dep", &["boom"], p.task("dep", 1))
+        .unwrap()
+        .add_task("free", &[], p.task("free", 1))
+        .unwrap()
+        .build()
+        .unwrap();
+    // One permit: "free" can only run if the panicking task released it.
+    let r = WorkflowExecutor::new(cfg(1)).unwrap().run(spec).await;
+    assert!(matches!(
+        r.snapshot.states[&tid("boom")],
+        TaskState::Failed(_)
+    ));
+    let rec = &r.failures[&tid("boom")];
+    assert_eq!(rec.class, FailureClass::Failed);
+    assert_eq!(rec.effect_certainty, EffectCertainty::Uncertain);
+    assert_eq!(
+        r.snapshot.states[&tid("dep")],
+        TaskState::Skipped {
+            prerequisite: tid("boom")
+        }
+    );
+    assert_eq!(p.runs("dep"), 0);
+    assert_eq!(p.runs("free"), 1, "permit was released");
+    assert_eq!(r.snapshot.states[&tid("free")], TaskState::Completed);
+    assert_eq!(r.status, WorkflowStatus::Failed);
+    assert!(r.unfinished.is_empty());
+    assert_eq!(r.events.last().unwrap().state, "finished");
+    gapless(&r);
+}
+
+#[tokio::test]
+async fn runner_error_text_is_truncated_before_it_is_recorded() {
+    let long = "x".repeat(5000);
+    let spec = b()
+        .add_task(
+            "noisy",
+            &[],
+            runner_fn(move |_c| {
+                let long = long.clone();
+                Box::pin(async move {
+                    TaskOutcome::Failed(ToolFault::new(
+                        FailureClass::Failed,
+                        EffectCertainty::Uncertain,
+                        long,
+                    ))
+                })
+            }),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+    let r = WorkflowExecutor::new(cfg(1)).unwrap().run(spec).await;
+    let msg = &r.failures[&tid("noisy")].cause[0].message;
+    assert!(msg.len() <= aegis::failure::MAX_CAUSE_MESSAGE_BYTES);
+}

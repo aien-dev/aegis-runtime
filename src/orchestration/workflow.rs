@@ -9,8 +9,8 @@
 
 use crate::events::{AegisEvent, EventBus, EventEnvelope};
 use crate::failure::{
-    now_millis, payload_digest, CancelToken, EffectCertainty, FailureClass, FailureRecord,
-    ToolFault,
+    now_millis, payload_digest, redact_payload_echoes, truncate_bytes, CancelToken,
+    EffectCertainty, FailureClass, FailureRecord, ToolFault, MAX_CAUSE_MESSAGE_BYTES,
 };
 use crate::sessions::id::{RunId, SessionId};
 use async_trait::async_trait;
@@ -237,8 +237,9 @@ pub struct WorkflowBuilder {
 }
 
 impl WorkflowBuilder {
-    /// Predecessors must already be added, which also makes forward edges
-    /// (and so most cycles) impossible; `build` still checks the whole graph.
+    /// Predecessors may be added after their dependents (forward references
+    /// are allowed). `build` validates the whole graph: unknown predecessors,
+    /// duplicate edges and cycles are all rejected there.
     pub fn add_task(
         mut self,
         id: impl Into<TaskId>,
@@ -455,7 +456,9 @@ impl Recorder {
             state: name.to_string(),
         });
         // Publish while holding the lock so bus order equals sequence order.
-        self.publish(event, seq);
+        if let Some(event) = event {
+            self.publish(event, seq);
+        }
         seq
     }
 
@@ -509,15 +512,14 @@ impl Recorder {
         id: &TaskId,
         state: &TaskState,
         result: Option<&ResultHandle>,
-    ) -> AegisEvent {
+    ) -> Option<AegisEvent> {
         let run_id = self.run_id.to_string();
         let task_id = id.to_string();
-        match state {
-            TaskState::Pending => AegisEvent::WorkflowTaskReady {
-                run_id,
-                workflow_seq: seq,
-                task_id,
-            },
+        Some(match state {
+            // Pending is the initial state and is never recorded as a
+            // transition, and the event enum has no variant for it, so no
+            // bus event exists (the ledger entry is still written).
+            TaskState::Pending => return None,
             TaskState::Ready => AegisEvent::WorkflowTaskReady {
                 run_id,
                 workflow_seq: seq,
@@ -556,7 +558,7 @@ impl Recorder {
                 task_id,
                 prerequisite: prerequisite.to_string(),
             },
-        }
+        })
     }
 }
 
@@ -618,7 +620,7 @@ impl WorkflowExecutor {
             now,
             now,
         )
-        .with_cause("workflow", message, None)
+        .with_cause("workflow", &scrub_message(message), None)
     }
 
     /// Runs the DAG to quiescence. Never blocks a worker thread: the
@@ -647,6 +649,9 @@ impl WorkflowExecutor {
         let mut by_join_id: HashMap<tokio::task::Id, TaskId> = HashMap::new();
         let mut live = 0usize;
         let mut peak = 0usize;
+        // The executor never triggers the caller's token. Budget expiry and
+        // observed caller cancels both trip this run-local token instead.
+        let run_cancel = CancelToken::new();
         let mut cancel_seen = false;
         let mut budget_exhausted = false;
         let deadline = self
@@ -654,22 +659,18 @@ impl WorkflowExecutor {
             .total_budget
             .map(|d| tokio::time::Instant::now() + d);
 
-        loop {
-            if !cancel_seen && self.cancel.is_cancelled() {
+        'outer: loop {
+            // Deadline first: no task may start once the budget is spent.
+            if !budget_exhausted && deadline.is_some_and(|d| tokio::time::Instant::now() >= d) {
+                budget_exhausted = true;
+                run_cancel.cancel();
+            }
+            if self.cancel.is_cancelled() {
+                run_cancel.cancel();
+            }
+            if !cancel_seen && run_cancel.is_cancelled() {
                 cancel_seen = true;
-                for id in &ids {
-                    if matches!(rec.state_of(id), TaskState::Pending | TaskState::Ready) {
-                        let f = self.failure(
-                            &rec,
-                            id,
-                            FailureClass::Cancelled,
-                            EffectCertainty::NoEffect,
-                            "workflow cancelled before start",
-                        );
-                        rec.note_failure(id, f);
-                        rec.transition(id, TaskState::Cancelled, None);
-                    }
-                }
+                self.cancel_open(&rec, &ids, &nodes);
             }
 
             if !cancel_seen {
@@ -678,6 +679,14 @@ impl WorkflowExecutor {
                 for id in &ids {
                     if rec.state_of(id) != TaskState::Ready {
                         continue;
+                    }
+                    // Re-check right before starting: cancel or an expired
+                    // budget restarts the pass, which cancels what is left.
+                    if self.cancel.is_cancelled()
+                        || run_cancel.is_cancelled()
+                        || deadline.is_some_and(|d| tokio::time::Instant::now() >= d)
+                    {
+                        continue 'outer;
                     }
                     let Ok(permit) = permits.clone().try_acquire_owned() else {
                         break;
@@ -691,9 +700,9 @@ impl WorkflowExecutor {
                         task_id: id.clone(),
                         run_id: self.config.run_id.clone(),
                         session_id: self.config.session_id.clone(),
-                        cancel: self.cancel.clone(),
+                        cancel: run_cancel.clone(),
                     };
-                    let cancel = self.cancel.clone();
+                    let cancel = run_cancel.clone();
                     let timeout = self.config.per_task_timeout;
                     let tid = id.clone();
                     let handle = running.spawn(async move {
@@ -723,7 +732,11 @@ impl WorkflowExecutor {
             }
 
             let joined = tokio::select! {
-                j = running.join_next_with_id() => j,
+                biased;
+                _ = self.cancel.cancelled(), if !cancel_seen => {
+                    run_cancel.cancel();
+                    continue;
+                }
                 _ = async {
                     match deadline {
                         Some(d) => tokio::time::sleep_until(d).await,
@@ -731,9 +744,10 @@ impl WorkflowExecutor {
                     }
                 }, if !budget_exhausted => {
                     budget_exhausted = true;
-                    self.cancel.cancel();
+                    run_cancel.cancel();
                     continue;
                 }
+                j = running.join_next_with_id() => j,
             };
             let Some(joined) = joined else { break };
             live -= 1;
@@ -763,7 +777,32 @@ impl WorkflowExecutor {
             self.settle(&rec, &tid, finish, interrupt);
         }
 
+        if cancel_seen {
+            // A task that reported ApprovalPending after the cancel was seen
+            // is settled here, so Cancelled never lists unfinished tasks.
+            self.cancel_open(&rec, &ids, &nodes);
+        }
         self.report(rec, ids, peak, budget_exhausted, cancel_seen)
+    }
+
+    /// Moves every non-terminal, non-running task to Cancelled. A task
+    /// waiting for approval is cancelled too: nothing will ever resume it.
+    fn cancel_open(&self, rec: &Recorder, ids: &[TaskId], nodes: &HashMap<TaskId, &TaskNode>) {
+        for id in ids {
+            let (message, certainty) = match rec.state_of(id) {
+                TaskState::Pending | TaskState::Ready => {
+                    ("workflow cancelled before start", EffectCertainty::NoEffect)
+                }
+                TaskState::WaitingForApproval => (
+                    "workflow cancelled while waiting for approval",
+                    nodes[id].runner.certainty_on_interrupt(),
+                ),
+                _ => continue,
+            };
+            let f = self.failure(rec, id, FailureClass::Cancelled, certainty, message);
+            rec.note_failure(id, f);
+            rec.transition(id, TaskState::Cancelled, None);
+        }
     }
 
     /// Unblocks dependents whose prerequisites all completed, and skips
@@ -902,6 +941,14 @@ impl WorkflowExecutor {
     }
 }
 
+/// Error text from runners and engines goes into Workflow events and reports,
+/// so it is cut to the cause limit before it is recorded. Runners that know
+/// their payload should also call `redact_payload_echoes` first (the agent
+/// adapter does).
+fn scrub_message(message: &str) -> String {
+    truncate_bytes(message, MAX_CAUSE_MESSAGE_BYTES)
+}
+
 /// Maps a finished `AgentEngine::execute_task` result onto a task outcome.
 /// This is the whole adapter seam: the agent already gates every tool call,
 /// so the DAG adds no authority here.
@@ -922,6 +969,20 @@ pub fn agent_outcome(result: &crate::agent::AgentExecutionResult) -> TaskOutcome
             .map(|c| c.message.clone())
             .unwrap_or_else(|| "agent tool call failed".into());
         return TaskOutcome::Failed(ToolFault::new(f.class, f.effect_certainty, msg));
+    }
+    // Deny by default: a failed call with no provenance record (older
+    // records) is still a failure, and its effect is unknown.
+    let unrecorded_failure = result
+        .steps
+        .iter()
+        .flat_map(|s| s.tool_calls.iter())
+        .any(|c| !c.success);
+    if unrecorded_failure {
+        return TaskOutcome::Failed(ToolFault::new(
+            FailureClass::Failed,
+            EffectCertainty::Uncertain,
+            "agent tool call failed without a failure record",
+        ));
     }
     if result.completed {
         TaskOutcome::Completed(serde_json::json!({ "final_response": result.final_response }))
@@ -954,7 +1015,7 @@ impl TaskRunner for AgentTaskRunner {
             Err(e) => TaskOutcome::Failed(ToolFault::new(
                 FailureClass::Failed,
                 EffectCertainty::Uncertain,
-                e.to_string(),
+                redact_payload_echoes(&e.to_string(), &serde_json::json!({ "goal": self.goal })),
             )),
         }
     }
