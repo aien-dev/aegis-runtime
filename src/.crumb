@@ -39,8 +39,8 @@
           "purpose": "Directory src/defense. Purpose not yet described by a human."
         },
         {
-          "digest": "512fab250fa949734a143c79571f82ac993c503fcd2ac71f699cf34415582481",
-          "last_commit": "d98ba21",
+          "digest": "14dd72b905c79d44b86b01f4ab43763cf21520fd4e38f077b682e35268010d17",
+          "last_commit": "0a956be",
           "name": "events",
           "purpose": "Directory src/events. Purpose not yet described by a human."
         },
@@ -51,8 +51,8 @@
           "purpose": "Directory src/execution. Purpose not yet described by a human."
         },
         {
-          "digest": "0c08369b428afac636246de8b36637a58106c235df8524f3f01be1195cc70dbe",
-          "last_commit": "1b0c299",
+          "digest": "c994eac17bd5e8da3a1f9e91ee112dd353fafc7756c9706cef7eb1954f5f2d1d",
+          "last_commit": "7be8b4b",
           "name": "orchestration",
           "purpose": "Directory src/orchestration. Purpose not yet described by a human."
         },
@@ -69,15 +69,15 @@
           "purpose": "Directory src/sessions. Purpose not yet described by a human."
         }
       ],
-      "children_root": "sha256:eafd79d762cf1c61e44c50176c2dfe4636950452ab07f0e54908276de92a5aa2",
-      "compiled_at": "2026-10-10T16:04:06Z",
+      "children_root": "sha256:af95fafcd57d595dacdc278a75abcc274f666cc995a97fa23b7b03ba2626d9c8",
+      "compiled_at": "2026-10-10T16:23:18Z",
       "compiler": "crumb-compile/1",
-      "digest": "sha256:9b9d657c8664a989a95b74e0e0be8b4c6224939dd63bb58735a7269a43a0df9d",
+      "digest": "sha256:3ba2f83f6464f4b188455f5f3fdfb5da1e845e36f314b7534423c5845467965a",
       "evidence_files": 0,
       "evidence_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "files": 48,
-      "generated_at_commit": "59106f26f00645ca8b362c8623c5f48d52664eae",
-      "source_tree": "sha256:ba81f730236b2440dd667c9d0ae62df98dac3a39df29fe9ca5a21db97d327e95"
+      "files": 49,
+      "generated_at_commit": "7be8b4b8c9c0aa061d85694997d5c5063fadd264",
+      "source_tree": "sha256:a23d0652ba2519f30a2779a97f29d863c1a9d280e364d067d35a32909c617d59"
     },
     "owner_lane": "",
     "seed": {

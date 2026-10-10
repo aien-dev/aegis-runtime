@@ -36,6 +36,52 @@ pub enum AegisEvent {
         failure: crate::failure::FailureRecord,
     },
 
+    /// Workflow (task DAG) transitions. `workflow_seq` is assigned under one
+    /// lock at transition time, so sorting by it replays the exact order.
+    WorkflowTaskReady {
+        run_id: String,
+        workflow_seq: u64,
+        task_id: String,
+    },
+    WorkflowTaskStarted {
+        run_id: String,
+        workflow_seq: u64,
+        task_id: String,
+    },
+    WorkflowTaskCompleted {
+        run_id: String,
+        workflow_seq: u64,
+        task_id: String,
+        result_digest: String,
+    },
+    WorkflowTaskWaiting {
+        run_id: String,
+        workflow_seq: u64,
+        task_id: String,
+    },
+    WorkflowTaskFailed {
+        run_id: String,
+        workflow_seq: u64,
+        task_id: String,
+        failure: crate::failure::FailureRecord,
+    },
+    WorkflowTaskCancelled {
+        run_id: String,
+        workflow_seq: u64,
+        task_id: String,
+    },
+    WorkflowTaskSkipped {
+        run_id: String,
+        workflow_seq: u64,
+        task_id: String,
+        prerequisite: String,
+    },
+    WorkflowFinished {
+        run_id: String,
+        workflow_seq: u64,
+        status: String,
+    },
+
     AssistantDelta {
         text: String,
     },

@@ -25,8 +25,8 @@
     "generated": {
       "children": [
         {
-          "digest": "8c6acdc9a526bbdc77b97c7f57fbfc452f30e37ae586baeb3f1bca94ef638b41",
-          "last_commit": "59106f2",
+          "digest": "0e67f750d69e5210c482d53230ffe07209af58a7d6176eb6a936759c0504d4c6",
+          "last_commit": "5e2f1e0",
           "name": "docs",
           "purpose": "Directory docs. Purpose not yet described by a human."
         },
@@ -43,27 +43,27 @@
           "purpose": "Directory scripts. Purpose not yet described by a human."
         },
         {
-          "digest": "9b9d657c8664a989a95b74e0e0be8b4c6224939dd63bb58735a7269a43a0df9d",
-          "last_commit": "59106f2",
+          "digest": "3ba2f83f6464f4b188455f5f3fdfb5da1e845e36f314b7534423c5845467965a",
+          "last_commit": "7be8b4b",
           "name": "src",
           "purpose": "Directory src. Purpose not yet described by a human."
         },
         {
-          "digest": "553b7ce7b77250717e875a812846042ff7b9dba674f0d17213a550feee3065bf",
-          "last_commit": "59106f2",
+          "digest": "fd142eed5f6851fd3e67d7c91052c66f86a2b712c46c17d5a4b37675e0401f4d",
+          "last_commit": "7be8b4b",
           "name": "tests",
           "purpose": "Directory tests. Purpose not yet described by a human."
         }
       ],
-      "children_root": "sha256:d8ec53ddc9c061bc6dfad5e949fc039883591c9187142fbe6dfc1ac7da9c7b43",
-      "compiled_at": "2026-10-10T16:04:06Z",
+      "children_root": "sha256:e362015ce6e6150f5df5a3973c8ebe529983bbaef591b0881d55529f22823885",
+      "compiled_at": "2026-10-10T16:23:18Z",
       "compiler": "crumb-compile/1",
-      "digest": "sha256:38f7c78c5829dc07d3238f0d0b8e126e8f3467cde530781f7d70155f8d58cb0c",
+      "digest": "sha256:7919ea5acabff482f35a4ca27daa8d0694c88060afa1913777991c8b8e645e4a",
       "evidence_files": 0,
       "evidence_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "files": 80,
-      "generated_at_commit": "59106f26f00645ca8b362c8623c5f48d52664eae",
-      "source_tree": "sha256:55741903b205bfafd8ff9d3c3f666f6beb0e7a2feca91ab25e8175ad211548ae"
+      "files": 83,
+      "generated_at_commit": "7be8b4b8c9c0aa061d85694997d5c5063fadd264",
+      "source_tree": "sha256:b658631617c7c95f058bfab65a5000808c178f095aa9051fd4082b89801ff296"
     },
     "owner_lane": "",
     "seed": {
