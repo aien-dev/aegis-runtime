@@ -1,3 +1,6 @@
+use crate::failure::{
+    skill_effect_profile, EffectCertainty, FailureClass, ToolDispatcher, ToolFault,
+};
 use crate::security::WorkspaceCapability;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -119,6 +122,40 @@ impl SkillRegistry {
             };
         }
         self.execute(req)
+    }
+
+    /// Same gates as `execute_gated` (probe gate, then membrane, then handler)
+    /// but returns a typed fault instead of a bare error string. Each call is a
+    /// fresh dispatch; nothing is cached between calls.
+    pub async fn dispatch_classified(
+        &self,
+        skill_name: &str,
+        arguments: &serde_json::Value,
+    ) -> Result<String, ToolFault> {
+        crate::enforcement::probe_gate(skill_name, arguments)
+            .await
+            .map_err(ToolFault::rejected)?;
+        crate::enforcement::pre_dispatch_check(skill_name, arguments)
+            .map_err(ToolFault::rejected)?;
+        let handler = {
+            let map = self.skills.read().unwrap();
+            map.get(skill_name).map(|(_, h)| h.clone())
+        };
+        let Some(h) = handler else {
+            return Err(ToolFault::rejected(format!(
+                "Skill '{}' not found in registry",
+                skill_name
+            )));
+        };
+        h(arguments.clone()).map_err(|err| {
+            if err.starts_with("Unavailable") {
+                ToolFault::unavailable(err)
+            } else if skill_effect_profile(skill_name).idempotent {
+                ToolFault::new(FailureClass::Failed, EffectCertainty::NoEffect, err)
+            } else {
+                ToolFault::new(FailureClass::Failed, EffectCertainty::EffectOccurred, err)
+            }
+        })
     }
 
     pub fn execute(&self, req: &SkillExecutionRequest) -> SkillExecutionResponse {
@@ -357,6 +394,17 @@ impl SkillRegistry {
         self.register(ping_def, |_| {
             Err("Unavailable: telemetry.read is not connected.".to_string()) // no telemetry
         });
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolDispatcher for SkillRegistry {
+    async fn dispatch(
+        &self,
+        skill_name: &str,
+        arguments: &serde_json::Value,
+    ) -> Result<String, ToolFault> {
+        self.dispatch_classified(skill_name, arguments).await
     }
 }
 
