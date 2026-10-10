@@ -1,12 +1,18 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::info;
 
+use crate::events::{AegisEvent, EventBus, EventEnvelope};
+use crate::failure::{
+    redact_payload_echoes, retry_loop, skill_effect_profile, CancelToken, EffectCertainty,
+    FailureClass, FailureRecord, RetryPolicy, ToolDispatcher, ToolFault,
+};
 use crate::inference::InferenceEngine;
 use crate::persistence::Database;
-use crate::skills::{SkillExecutionRequest, SkillRegistry};
+use crate::sessions::id::RunId;
+use crate::skills::SkillRegistry;
 
 pub const DEFAULT_MAX_CONTEXT_TOKENS: usize = 8192;
 
@@ -17,6 +23,20 @@ pub struct ToolExecutionRecord {
     pub arguments: serde_json::Value,
     pub output: String,
     pub success: bool,
+    /// Terminal failure provenance. Absent on success and in older records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<FailureRecord>,
+    /// Earlier failed attempts of this same call, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retry_failures: Vec<FailureRecord>,
+}
+
+/// Failure handling knobs. Defaults keep the old behaviour: one attempt,
+/// no deadline.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FailurePolicy {
+    pub retry: RetryPolicy,
+    pub tool_timeout: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +60,11 @@ pub struct AgentEngine {
     inference: Arc<dyn InferenceEngine>,
     skills: Arc<SkillRegistry>,
     db: Option<Arc<Database>>,
+    dispatcher: Arc<dyn ToolDispatcher>,
+    policy: FailurePolicy,
+    cancel: CancelToken,
+    events: Option<(EventBus, Option<String>)>,
+    run_id: Option<String>,
 }
 
 impl AgentEngine {
@@ -50,8 +75,84 @@ impl AgentEngine {
     ) -> Self {
         Self {
             inference,
+            dispatcher: skills.clone(),
             skills,
             db,
+            policy: FailurePolicy::default(),
+            cancel: CancelToken::new(),
+            events: None,
+            run_id: None,
+        }
+    }
+
+    /// Replaces the tool dispatch seam (default: the skill registry's gated path).
+    pub fn with_dispatcher(mut self, dispatcher: Arc<dyn ToolDispatcher>) -> Self {
+        self.dispatcher = dispatcher;
+        self
+    }
+
+    pub fn with_failure_policy(mut self, policy: FailurePolicy) -> Self {
+        self.policy = policy;
+        self
+    }
+
+    pub fn with_cancel_token(mut self, cancel: CancelToken) -> Self {
+        self.cancel = cancel;
+        self
+    }
+
+    /// Publishes `AegisEvent::StepFailed` on this bus for every failed attempt.
+    pub fn with_event_bus(mut self, bus: EventBus, session_id: Option<String>) -> Self {
+        self.events = Some((bus, session_id));
+        self
+    }
+
+    /// Fixes the run id stamped on failure records (default: a fresh id per task).
+    pub fn with_run_id(mut self, run_id: impl Into<String>) -> Self {
+        self.run_id = Some(run_id.into());
+        self
+    }
+
+    /// One fresh gated dispatch with cancellation and deadline applied.
+    /// A cancel or timeout of a non-idempotent call leaves the effect Uncertain.
+    async fn attempt_tool(
+        &self,
+        name: &str,
+        args: &serde_json::Value,
+        idempotent: bool,
+    ) -> Result<String, ToolFault> {
+        let unknown = if idempotent {
+            EffectCertainty::NoEffect
+        } else {
+            EffectCertainty::Uncertain
+        };
+        if self.cancel.is_cancelled() {
+            return Err(ToolFault::new(
+                FailureClass::Cancelled,
+                EffectCertainty::NoEffect,
+                "cancelled before dispatch",
+            ));
+        }
+        let guarded = async {
+            tokio::select! {
+                r = self.dispatcher.dispatch(name, args) => r,
+                _ = self.cancel.cancelled() => Err(ToolFault::new(
+                    FailureClass::Cancelled,
+                    unknown,
+                    "cancelled while running",
+                )),
+            }
+        };
+        match self.policy.tool_timeout {
+            Some(d) => match tokio::time::timeout(d, guarded).await {
+                Ok(r) => r,
+                Err(_) => Err(ToolFault::new(
+                    FailureClass::Timeout,
+                    unknown,
+                    format!("deadline of {} ms exceeded", d.as_millis()),
+                )),
+            },
+            None => guarded.await,
         }
     }
 
@@ -126,6 +227,13 @@ impl AgentEngine {
         let mut final_response = String::new();
         let mut turns_taken = 0;
         let mut completed = false;
+        let run_id = self
+            .run_id
+            .clone()
+            .unwrap_or_else(|| RunId::new().as_str().to_string());
+        let mut failure_seq: u64 = 0;
+        let mut last_failed_call: Option<String> = None;
+        let mut halted: Option<String> = None;
 
         for turn in 1..=max_turns {
             turns_taken = turn;
@@ -175,26 +283,79 @@ impl AgentEngine {
                     let args: serde_json::Value = serde_json::from_str(&tc.function.arguments)
                         .unwrap_or_else(|_| json!({"raw": tc.function.arguments}));
 
-                    let req = SkillExecutionRequest {
-                        skill_name: tc.function.name.clone(),
-                        arguments: args.clone(),
-                    };
+                    // Every attempt is a new gated dispatch (allowlist and probe
+                    // gate run again). Retry happens only for idempotent calls
+                    // that were refused or unreachable with no effect.
+                    let idempotent = skill_effect_profile(&tc.function.name).idempotent;
+                    let (result, failed_attempts) =
+                        retry_loop(&self.policy.retry, idempotent, |_| {
+                            self.attempt_tool(&tc.function.name, &args, idempotent)
+                        })
+                        .await;
 
-                    let res = self.skills.execute_gated(&req).await;
-                    let output_str = if res.success {
-                        res.output.clone()
-                    } else {
-                        res.error
-                            .clone()
-                            .unwrap_or_else(|| "Unknown error".to_string())
+                    let mut failure_records: Vec<FailureRecord> = Vec::new();
+                    for a in &failed_attempts {
+                        failure_seq += 1;
+                        let mut rec = FailureRecord::new(
+                            failure_seq,
+                            run_id.clone(),
+                            turn,
+                            tc.id.clone(),
+                            last_failed_call.clone(),
+                            tc.function.name.clone(),
+                            a.attempt,
+                            a.fault.class,
+                            a.fault.certainty,
+                            a.created_at,
+                            a.failed_at,
+                        );
+                        let msg = redact_payload_echoes(&a.fault.message, &args);
+                        rec.push_cause("tool_dispatch", &msg, Some(&args));
+                        if let Some((bus, session_id)) = &self.events {
+                            let _ = bus.publish(EventEnvelope::new(
+                                AegisEvent::StepFailed {
+                                    failure: rec.clone(),
+                                },
+                                session_id.clone(),
+                                Some(run_id.clone()),
+                                failure_seq,
+                            ));
+                        }
+                        failure_records.push(rec);
+                    }
+
+                    let (output_str, success) = match &result {
+                        Ok(out) => (out.clone(), true),
+                        Err(fault) => (redact_payload_echoes(&fault.message, &args), false),
                     };
+                    let failure = if success { None } else { failure_records.pop() };
+
+                    if let Err(fault) = &result {
+                        last_failed_call = Some(tc.id.clone());
+                        match fault.class {
+                            FailureClass::ApprovalPending => {
+                                halted = Some(format!(
+                                    "Halted: tool call {} is waiting for approval and will not be replayed automatically.",
+                                    tc.id
+                                ));
+                            }
+                            FailureClass::Cancelled => {
+                                halted = Some(format!("Run cancelled during tool call {}.", tc.id));
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        last_failed_call = None;
+                    }
 
                     tool_exec_records.push(ToolExecutionRecord {
                         call_id: tc.id.clone(),
                         tool_name: tc.function.name.clone(),
                         arguments: args,
                         output: output_str.clone(),
-                        success: res.success,
+                        success,
+                        failure,
+                        retry_failures: failure_records,
                     });
 
                     messages.push(json!({
@@ -202,6 +363,10 @@ impl AgentEngine {
                         "tool_call_id": tc.id,
                         "content": output_str
                     }));
+
+                    if halted.is_some() {
+                        break;
+                    }
                 }
 
                 steps.push(AgentStep {
@@ -209,6 +374,10 @@ impl AgentEngine {
                     thought,
                     tool_calls: tool_exec_records,
                 });
+                if let Some(reason) = halted.take() {
+                    final_response = reason;
+                    break;
+                }
             } else {
                 let content = turn_res.content.unwrap_or_default();
                 final_response = if !content.trim().is_empty() {
@@ -256,6 +425,7 @@ impl AgentEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::skills::SkillExecutionRequest;
     use crate::HttpInferenceBackend;
 
     #[tokio::test]
