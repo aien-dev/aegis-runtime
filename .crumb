@@ -26,7 +26,7 @@
       "children": [
         {
           "digest": "0e67f750d69e5210c482d53230ffe07209af58a7d6176eb6a936759c0504d4c6",
-          "last_commit": "5e2f1e0",
+          "last_commit": "1eba7a7",
           "name": "docs",
           "purpose": "Directory docs. Purpose not yet described by a human."
         },
@@ -44,26 +44,26 @@
         },
         {
           "digest": "3ba2f83f6464f4b188455f5f3fdfb5da1e845e36f314b7534423c5845467965a",
-          "last_commit": "7be8b4b",
+          "last_commit": "1eba7a7",
           "name": "src",
           "purpose": "Directory src. Purpose not yet described by a human."
         },
         {
-          "digest": "fd142eed5f6851fd3e67d7c91052c66f86a2b712c46c17d5a4b37675e0401f4d",
-          "last_commit": "7be8b4b",
+          "digest": "679a171888a7f534584da794f4ed48bd0da3bd4f51d03fdc14b80328ea17c776",
+          "last_commit": "ae1c0a2",
           "name": "tests",
           "purpose": "Directory tests. Purpose not yet described by a human."
         }
       ],
-      "children_root": "sha256:e362015ce6e6150f5df5a3973c8ebe529983bbaef591b0881d55529f22823885",
-      "compiled_at": "2026-10-10T16:23:18Z",
+      "children_root": "sha256:772fc3fa43549ad5f2e6fbd67024d7f0c3124008e257691c95a76449f5da04d4",
+      "compiled_at": "2026-10-11T16:52:30Z",
       "compiler": "crumb-compile/1",
-      "digest": "sha256:7919ea5acabff482f35a4ca27daa8d0694c88060afa1913777991c8b8e645e4a",
+      "digest": "sha256:283d888ae0c169cf05386a22c3ec6105040bb07e511f5217af3e54907497d6df",
       "evidence_files": 0,
       "evidence_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "files": 83,
-      "generated_at_commit": "7be8b4b8c9c0aa061d85694997d5c5063fadd264",
-      "source_tree": "sha256:b658631617c7c95f058bfab65a5000808c178f095aa9051fd4082b89801ff296"
+      "files": 95,
+      "generated_at_commit": "ae1c0a2f59483228e368a3841693ab18ac46b5b8",
+      "source_tree": "sha256:9d2488d7980b867494fc8c3b0d9dad90f033eb785e87bf3e7ca5c61e09a4a924"
     },
     "owner_lane": "",
     "seed": {
