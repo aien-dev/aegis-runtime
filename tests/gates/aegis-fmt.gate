@@ -1,0 +1,23 @@
+# tests/gates/aegis-fmt.gate
+# Mirrors hosted: ci.yml 'Verify Code Formatting': cargo fmt --all -- --check (host: needs the ../aien-protocols sibling to resolve the workspace)
+gate: AEGIS-FMT
+manifest_version: 2
+owner: aegis-runtime
+requires:
+  - host
+inputs:
+  - Cargo.toml
+  - Cargo.lock
+  - src/
+  - tests/
+  - build.rs
+  - tests/gates/
+run:
+  exec: tests/gates/run.sh
+  args: ["fmt"]
+expects:
+  exit: 0
+  verdict: PASS
+timeout: 5m
+exactness: EXACT
+cache_scope: portable
