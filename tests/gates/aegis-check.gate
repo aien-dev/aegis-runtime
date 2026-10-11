@@ -1,0 +1,24 @@
+# tests/gates/aegis-check.gate
+# Mirrors hosted: ci.yml 'Cargo Check': cargo check --all-targets (sibling ../aien-protocols at main, as the hosted job checks out)
+gate: AEGIS-CHECK
+manifest_version: 2
+owner: aegis-runtime
+requires:
+  - host
+inputs:
+  - Cargo.toml
+  - Cargo.lock
+  - src/
+  - tests/
+  - build.rs
+  - mojo/
+  - tests/gates/
+run:
+  exec: tests/gates/run.sh
+  args: ["check"]
+expects:
+  exit: 0
+  verdict: PASS
+timeout: 20m
+exactness: EXACT
+cache_scope: machine

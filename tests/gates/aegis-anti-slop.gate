@@ -1,0 +1,23 @@
+# tests/gates/aegis-anti-slop.gate
+# Mirrors hosted: ci.yml 'Enforce Sovereign Voice and Anti-Slop Invariant' (always-run)
+gate: AEGIS-ANTI-SLOP
+manifest_version: 2
+owner: aegis-runtime
+requires:
+  - portable
+inputs:
+  - src/
+  - tests/
+  - docs/
+  - README.md
+  - tests/gates/
+run:
+  exec: tests/gates/run.sh
+  args: ["anti-slop"]
+expects:
+  exit: 0
+  observe: ["dash_hits == 0"]
+  verdict: PASS
+timeout: 2m
+exactness: EXACT
+cache_scope: portable
