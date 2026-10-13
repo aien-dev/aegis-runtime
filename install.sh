@@ -89,38 +89,41 @@ else
   echo "[+] Downloading $DOWNLOAD_URL..."
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$TARBALL"
-    curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/$CHECKSUM_FILE" 2>/dev/null || true
+    curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/$CHECKSUM_FILE"
   elif command -v wget >/dev/null 2>&1; then
     wget -qO "$TMP_DIR/$TARBALL" "$DOWNLOAD_URL"
-    wget -qO "$TMP_DIR/$CHECKSUM_FILE" "$CHECKSUM_URL" 2>/dev/null || true
+    wget -qO "$TMP_DIR/$CHECKSUM_FILE" "$CHECKSUM_URL"
   else
     echo "Error: Neither curl nor wget was found on PATH." >&2
     exit 1
   fi
 fi
 
-if [ -f "$TMP_DIR/$CHECKSUM_FILE" ]; then
-  echo "[+] Verifying SHA256 checksum..."
-  EXPECTED_HASH="$(awk '{print $1}' "$TMP_DIR/$CHECKSUM_FILE")"
-  if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL_HASH="$(sha256sum "$TMP_DIR/$TARBALL" | awk '{print $1}')"
-  elif command -v shasum >/dev/null 2>&1; then
-    ACTUAL_HASH="$(shasum -a 256 "$TMP_DIR/$TARBALL" | awk '{print $1}')"
-  else
-    echo "Warning: Neither sha256sum nor shasum found; skipping checksum verification." >&2
-    ACTUAL_HASH="$EXPECTED_HASH"
-  fi
-
-  if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
-    echo "Error: Checksum verification failed!" >&2
-    echo "Expected: $EXPECTED_HASH" >&2
-    echo "Actual:   $ACTUAL_HASH" >&2
-    exit 1
-  fi
-  echo "[+] Checksum verified: $ACTUAL_HASH"
-else
-  echo "[*] No checksum file provided; proceeding with extraction."
+# Every install path verifies the tarball. A missing or empty checksum, a
+# missing hash tool or a mismatch stops the install.
+if [ ! -s "$TMP_DIR/$CHECKSUM_FILE" ]; then
+  echo "Error: No checksum file for $TARBALL; refusing to install an unverified binary." >&2
+  exit 1
 fi
+
+echo "[+] Verifying SHA256 checksum..."
+EXPECTED_HASH="$(awk 'NR == 1 {print $1}' "$TMP_DIR/$CHECKSUM_FILE")"
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL_HASH="$(sha256sum "$TMP_DIR/$TARBALL" | awk '{print $1}')"
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL_HASH="$(shasum -a 256 "$TMP_DIR/$TARBALL" | awk '{print $1}')"
+else
+  echo "Error: Neither sha256sum nor shasum found; cannot verify $TARBALL." >&2
+  exit 1
+fi
+
+if [ -z "$EXPECTED_HASH" ] || [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
+  echo "Error: Checksum verification failed!" >&2
+  echo "Expected: $EXPECTED_HASH" >&2
+  echo "Actual:   $ACTUAL_HASH" >&2
+  exit 1
+fi
+echo "[+] Checksum verified: $ACTUAL_HASH"
 
 echo "[+] Extracting $TARBALL..."
 tar -xzf "$TMP_DIR/$TARBALL" -C "$TMP_DIR"
