@@ -33,7 +33,6 @@ pub const PUBLIC_READ_PATHS: &[&str] = &[
     "/api/v1/health",
     "/v1/models",
     "/api/v1/skills",
-    "/api/v1/tasks",
     "/api/v1/events",
     "/events",
 ];
@@ -214,6 +213,8 @@ mod tests {
         assert!(is_public(&Method::GET, "/health"));
         assert!(!is_public(&Method::POST, "/health"));
         assert!(!is_public(&Method::POST, "/api/v1/tasks"));
+        // Task records carry payloads and results (command text and output).
+        assert!(!is_public(&Method::GET, "/api/v1/tasks"));
         assert!(!is_public(&Method::GET, "/ws"));
         assert!(!is_public(&Method::GET, "/api/v1/ws"));
         assert!(!is_public(&Method::GET, "/health/"));
