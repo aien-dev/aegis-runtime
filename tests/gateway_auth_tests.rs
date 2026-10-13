@@ -204,12 +204,7 @@ async fn no_configured_token_means_protected_routes_are_closed() {
 async fn public_reads_stay_open() {
     let ws = tempfile::tempdir().unwrap();
     let state = state_with(authed(), ws.path());
-    for uri in [
-        "/health",
-        "/api/v1/health",
-        "/api/v1/skills",
-        "/api/v1/tasks",
-    ] {
+    for uri in ["/health", "/api/v1/health", "/api/v1/skills"] {
         let (status, _) = send(&state, "GET", uri, &[], json!({})).await;
         assert_eq!(status, StatusCode::OK, "{}", uri);
     }
@@ -353,4 +348,23 @@ fn serve_refuses_non_loopback_bind_without_opt_in() {
 fn serve_refuses_a_short_operator_token() {
     let text = serve_must_refuse(&[], Some("short"));
     assert!(text.contains("at least"), "{}", text);
+}
+
+#[tokio::test]
+async fn task_list_needs_the_operator_token() {
+    let ws = tempfile::tempdir().unwrap();
+    let state = state_with(authed(), ws.path());
+    let (status, _) = send(&state, "GET", "/api/v1/tasks", &[], json!({})).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = send(
+        &state,
+        "GET",
+        "/api/v1/tasks",
+        &bearer("wrong-token"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = send(&state, "GET", "/api/v1/tasks", &bearer(TOKEN), json!({})).await;
+    assert_eq!(status, StatusCode::OK);
 }

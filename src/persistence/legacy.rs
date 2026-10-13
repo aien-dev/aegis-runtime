@@ -207,6 +207,17 @@ impl Database {
         Ok(tasks)
     }
 
+    /// Moves a pending task to `running`. Returns `false` when another caller
+    /// already claimed it, so each task runs at most once.
+    pub fn claim_task(&self, id: &str) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE tasks SET status = 'running' WHERE id = ?1 AND status = 'pending'",
+            params![id],
+        )?;
+        Ok(changed == 1)
+    }
+
     pub fn complete_task(&self, id: &str, result: &str) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
         let now = Utc::now().to_rfc3339();

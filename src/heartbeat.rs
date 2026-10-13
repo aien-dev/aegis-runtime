@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::sync::{broadcast, Mutex};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::inference::InferenceEngine;
 use crate::persistence::Database;
@@ -95,12 +95,31 @@ impl HeartbeatEngine {
         let tick = self.tick_counter.fetch_add(1, Ordering::SeqCst) + 1;
         let now = Utc::now().to_rfc3339();
 
-        let pending_tasks = self.db.list_pending_tasks().unwrap_or_default();
+        let pending_tasks = match self.db.list_pending_tasks() {
+            Ok(tasks) => tasks,
+            Err(e) => {
+                warn!(
+                    "Heartbeat pulse #{} could not list pending tasks: {}",
+                    tick, e
+                );
+                Vec::new()
+            }
+        };
         let tasks_count = pending_tasks.len();
         let mut actions = 0;
 
         for task in pending_tasks {
-            match task.task_type.as_str() {
+            // Another pulse may have taken this task since the list was read.
+            match self.db.claim_task(&task.id) {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(e) => {
+                    warn!("Heartbeat could not claim task {}: {}", task.id, e);
+                    continue;
+                }
+            }
+
+            let res_text = match task.task_type.as_str() {
                 "max_health" => {
                     let is_healthy = if let Some(ref inf) = self.inference {
                         inf.check_health().await
@@ -113,13 +132,12 @@ impl HeartbeatEngine {
                             .unwrap_or(false)
                     };
 
-                    let res_text = if is_healthy {
-                        "MAX local inference engine verified ACTIVE on port 18006"
+                    if is_healthy {
+                        "MAX local inference engine verified ACTIVE on port 18006".to_string()
                     } else {
                         "MAX local inference engine unreachable or offline on port 18006"
-                    };
-                    let _ = self.db.complete_task(&task.id, res_text);
-                    actions += 1;
+                            .to_string()
+                    }
                 }
                 "build_monitor" | "shell_exec" => {
                     let cmd_to_run = if task.payload.is_empty() {
@@ -128,16 +146,14 @@ impl HeartbeatEngine {
                         &task.payload
                     };
 
-                    let res_text = match self
+                    match self
                         .workspace
                         .dispatch_shell_gated(cmd_to_run, None, 15)
                         .await
                     {
                         Ok(stdout) => format!("Exit code 0: {}", stdout.trim()),
                         Err(e) => format!("Execution failure: {}", e),
-                    };
-                    let _ = self.db.complete_task(&task.id, &res_text);
-                    actions += 1;
+                    }
                 }
                 "consolidate_memory" => {
                     let crumb_key = format!("consolidation_tick_{}", tick);
@@ -146,22 +162,19 @@ impl HeartbeatEngine {
                         "Episodic memory consolidated into WAL",
                         "heartbeat",
                     );
-                    let _ = self.db.complete_task(&task.id, "Memory crumbs recorded");
-                    actions += 1;
+                    "Memory crumbs recorded".to_string()
                 }
-                "system_telemetry" => {
-                    let _ = self
-                        .db
-                        .complete_task(&task.id, "System telemetry nominal: GB10 aarch64");
-                    actions += 1;
-                }
-                _ => {
-                    let _ = self
-                        .db
-                        .complete_task(&task.id, "Autonomous task processed by heartbeat loop");
-                    actions += 1;
-                }
+                "system_telemetry" => "System telemetry nominal: GB10 aarch64".to_string(),
+                _ => "Autonomous task processed by heartbeat loop".to_string(),
+            };
+
+            if let Err(e) = self.db.complete_task(&task.id, &res_text) {
+                warn!(
+                    "Heartbeat could not record the result of task {}: {}",
+                    task.id, e
+                );
             }
+            actions += 1;
         }
 
         let receipt = PulseReceipt {
@@ -263,6 +276,20 @@ mod tests {
 
         let remaining = db.list_pending_tasks().unwrap();
         assert_eq!(remaining.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_overlapping_pulses_run_a_task_once() {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        db.create_task("hb_once", "max_health", "check").unwrap();
+
+        // The first pulse awaits the health probe while the second one lists
+        // tasks, so both see the task unless the first one claimed it.
+        let engine = HeartbeatEngine::new(60, db.clone());
+        let (a, b) = tokio::join!(engine.pulse_once(), engine.pulse_once());
+
+        assert_eq!(a.actions_dispatched + b.actions_dispatched, 1);
+        assert!(db.list_pending_tasks().unwrap().is_empty());
     }
 
     #[tokio::test]

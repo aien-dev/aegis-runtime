@@ -261,3 +261,18 @@ fn test_legacy_database_interop() {
         assert_eq!(fetched.id, session.id);
     });
 }
+
+#[test]
+fn test_legacy_task_claim_is_exclusive() {
+    let db = Database::open_in_memory().unwrap();
+    db.create_task("task_claim", "shell_exec", "echo once")
+        .unwrap();
+
+    assert!(db.claim_task("task_claim").unwrap());
+    assert!(!db.claim_task("task_claim").unwrap());
+    assert!(!db.claim_task("no_such_task").unwrap());
+    assert!(db.list_pending_tasks().unwrap().is_empty());
+
+    db.complete_task("task_claim", "done").unwrap();
+    assert!(!db.claim_task("task_claim").unwrap());
+}
