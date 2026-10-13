@@ -4,21 +4,21 @@
 
 Copyright (c) 2026 Drake Stapleton <aien@aienos.com> and AIEN Contributors. Authored by Drake Stapleton in collaboration with AIEN.
 
-Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration kernels and local Modular MAX inference on NVIDIA Grace Blackwell GB10 hardware.
+Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration kernels, built for NVIDIA Grace Blackwell GB10 hardware. Model inference goes to a local Modular MAX server when started with `--inference http`. The default `--inference embedded` backend is a mock: it loads no model and ignores `--model-path` and `--tokenizer-path`.
 
 ## Architecture
 
 ```
                                   +-----------------------------+
-                                  |   Hardware TPM Key Vault    |
-                                  |   (Zero Disk Secrets)       |
+                                  |   atlas-vault client        |
+                                  |   (No Secrets on Disk)      |
                                   +--------------+--------------+
                                                  |
 +---------------------------+     +--------------v--------------+     +-----------------------------+
-|   Axum Control Plane      |     |     Heartbeat Engine        |     |      Modular MAX            |
-|   - Port 18096            | <-> |     - 30s Autonomous Tick   | <-> |      - Port 18006           |
+|   Axum Control Plane      |     |     Heartbeat Engine        |     |  Modular MAX (optional)     |
+|   - Port 18096            | <-> |     - Autonomous Tick [2]   | <-> |      - Port 18006           |
 |   - WebSockets & SSE      |     |     - State Machine         |     |      - GB10 Local Weights   |
-|   - Sub-millisecond API   |     |     - Task Evaluation       |     |      - TTFT per model [1]   |
+|   - REST API              |     |     - Task Evaluation       |     |      - TTFT per model [1]   |
 +---------------------------+     +--------------+--------------+     +-----------------------------+
                                                  |
                                   +--------------v--------------+
@@ -28,18 +28,20 @@ Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration k
                                   +-----------------------------+
 ```
 
-[1] Measured TTFT depends on the model. For example, Nemotron 3.5 Lightning 30B measured 426.91 ms in [aien-dev/benchmarks](https://github.com/aien-dev/benchmarks); figures there are being regenerated under the evidence standard.
+[1] Measured TTFT depends on the model. For example, Nemotron 3.5 Lightning 30B measured 426.91 ms (`data/benchmarks_20260919.json` in [aien-dev/benchmarks](https://github.com/aien-dev/benchmarks)). That repository has withdrawn the figure: it predates its evidence standard and has not been regenerated.
+
+[2] The tick interval is 30 seconds for `aegis heartbeat` and 60 seconds for `aegis serve` unless `--heartbeat-secs` is set.
 
 ## Core Subsystems
 
 1. **Axum Control Plane**:
-   Full duplex WebSockets, Server-Sent Events (SSE), and REST APIs bound to port 18096.
+   Full duplex WebSockets (`/ws`, `/api/v1/ws`), Server-Sent Events (`/api/v1/events`, `/events`), and REST APIs on port 18096: `/api/v1/chat`, `/api/v1/agent/run`, `/api/v1/heartbeat/tick`, `/api/v1/tasks`, `/api/v1/skills`, `/api/v1/shell`, `/api/v1/discord/relay`, plus OpenAI-style `/v1/chat/completions` and `/v1/models`, and `/v1/probe`.
 
 2. **Heartbeat Engine**:
-   Autonomous polling loop waking every 30 seconds to inspect system state, dispatch background tasks, and sync memory.
+   Autonomous polling loop (30 seconds under `aegis heartbeat`, 60 seconds by default under `aegis serve`) that claims pending tasks, runs them, and emits a pulse receipt.
 
-3. **Local Modular MAX Inference**:
-   Direct local loopback connection to Modular MAX on port 18006 (`atlas-lightning-omni`).
+3. **Local Modular MAX Inference** (optional):
+   With `--inference http`, requests go to the OpenAI-style endpoint given by `--max-url` (default `http://127.0.0.1:18006/v1/chat/completions`) using the model name `atlas-lightning-omni`. Without it, the mock backend answers.
 
 4. **Mojo 1.1 SIMD Kernels**:
    Vector cosine similarity, Shannon entropy, and linear projection using Mojo SIMD vector primitives via C-ABI FFI (`libloading`).
@@ -54,7 +56,9 @@ Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration k
 
 ### Prerequisites
 - Rust 1.80+ (`cargo`)
-- Modular MAX & Mojo 1.1
+- A checkout of [aien-dev/aien-protocols](https://github.com/aien-dev/aien-protocols) next to this one at `../aien-protocols` (six path dependencies in `Cargo.toml`)
+- Optional: Mojo 1.1. `build.rs` builds `mojo/aegis_simd.mojo` into a shared library when `mojo` is on the PATH; otherwise the SIMD functions run as plain Rust (`aegis status` shows `NATIVE_FALLBACK`).
+- Optional: a Modular MAX server, only for `--inference http`
 - Linux aarch64 (Grace Blackwell GB10) or x86_64
 
 ### Compilation
@@ -73,21 +77,27 @@ Security defaults:
 - The gateway listens on 127.0.0.1 only. Any other address needs `--bind <ip> --allow-non-loopback-bind`.
 - Every route except a few read-only `GET` routes (`/health`, `/api/v1/health`, `/v1/models`, `/api/v1/skills`, `/api/v1/events`, `/events`) needs the operator token, sent as `Authorization: Bearer <token>` or `X-Aegis-Operator-Token: <token>`. This covers `/api/v1/shell`, `/api/v1/skills/execute`, the task list (`GET /api/v1/tasks`, whose records carry command text and output), every other `POST`, and the WebSocket. With no token configured those routes refuse every request. The token can also come from `--operator-token-file <path>`.
 - Skills and shell commands run only from an allowlist: the registered skill names, and for shell exactly `git status`, `git diff`, `git log -1 --oneline`, `ls`.
-- Probe gating runs on every skill and shell call. `AIEN_PROBE_ENFORCE=<0.5..1.0>` can only raise the threshold; it cannot turn gating off.
+- Probe gating runs on every skill and shell call. `AIEN_PROBE_ENFORCE` takes a number above 0.5 and up to 1.0 and can only raise the threshold; any other value keeps the default of 0.5, so it cannot turn gating off.
 
 ### CLI Commands
 ```bash
 # Execute a single autonomous tick
 aegis tick
 
-# Query local MAX directly
+# Run the heartbeat loop on its own (30 second default)
+aegis heartbeat
+
+# Send one prompt to the inference backend (add --inference http to reach MAX)
 aegis ask "Analyze system health and pending tasks"
+
+# Run an agent task with multi-turn tool calling (default 8 turns)
+aegis agent "Summarize the repository status" --max-turns 8
 
 # Check engine status
 aegis status
 
-# Run SIMD kernel benchmark and mathematical verification
-aegis sim-mojo
+# Print a small SIMD kernel evaluation and whether Mojo or the Rust fallback is active
+aegis simd --steps 10
 ```
 
 ## Mathematical verification
