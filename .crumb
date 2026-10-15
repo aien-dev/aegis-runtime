@@ -5,10 +5,6 @@
       "role": ""
     },
     {
-      "name": "mojo",
-      "role": ""
-    },
-    {
       "name": "scripts",
       "role": ""
     },
@@ -25,16 +21,10 @@
     "generated": {
       "children": [
         {
-          "digest": "0e67f750d69e5210c482d53230ffe07209af58a7d6176eb6a936759c0504d4c6",
-          "last_commit": "1eba7a7",
+          "digest": "8d4f47af8a191dd8dafe36d7fb8dae8d20f66570ec0471f404a401d77f38f2ec",
+          "last_commit": "95a5d60",
           "name": "docs",
           "purpose": "Directory docs. Purpose not yet described by a human."
-        },
-        {
-          "digest": "49e79db936da2c48b45792dbf94788d88e700d04b44e19473cda4f62fccf33b3",
-          "last_commit": "fc2e889",
-          "name": "mojo",
-          "purpose": "Directory mojo. Purpose not yet described by a human."
         },
         {
           "digest": "c880e92d912019a3ae3a21139be2b1783d4aa45ff81cd4954e271179beab0b44",
@@ -43,27 +33,27 @@
           "purpose": "Directory scripts. Purpose not yet described by a human."
         },
         {
-          "digest": "32915e3f9b0295a3b3f99438d6fbbe9c495aa296b5910203ba656ed8553ceb7c",
-          "last_commit": "8724580",
+          "digest": "c5014f96cda85b2aa1ea45e07fb24d31c48a69869a4c7cd907e6cbd5108f684c",
+          "last_commit": "95a5d60",
           "name": "src",
           "purpose": "Directory src. Purpose not yet described by a human."
         },
         {
-          "digest": "7e77e7bf496c6e3ef423ae36d156c2d56346155341db6619a5f45de316632503",
-          "last_commit": "ebc3b13",
+          "digest": "ce87e921b21d06f9a929ea39e1e5f83c5f2081409e8b6f4311e74d32b7f1ed0f",
+          "last_commit": "95a5d60",
           "name": "tests",
           "purpose": "Directory tests. Purpose not yet described by a human."
         }
       ],
-      "children_root": "sha256:ac4b01de578e8b9d1be9abdac21c14a839eed0a4043b032f299d30fc13cf1c42",
-      "compiled_at": "2026-10-13T10:44:57Z",
+      "children_root": "sha256:255a70c93a80969f70a10fbc24a9c7170c254c4a3128aecc3bd64a5a5d010151",
+      "compiled_at": "2026-10-15T11:19:04Z",
       "compiler": "crumb-compile/1",
-      "digest": "sha256:dc2fa8db462c69bf39b2fadee410d5586b507ae97b29bd3645c060084a00f86a",
+      "digest": "sha256:63e5456fcca3f81ef5a758208f2485adfb73a835445f5f329bc139e9c0f46c31",
       "evidence_files": 0,
       "evidence_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "files": 96,
-      "generated_at_commit": "2e9f40ae0cd9484757f065e407cb20016d146317",
-      "source_tree": "sha256:8f84d431e07483471fca6f4d81e6b3f5ac7cd1fde17cfcfffc5dcd66421213ce"
+      "files": 94,
+      "generated_at_commit": "95a5d6052daa9f6a81c731842628db28a4e05482",
+      "source_tree": "sha256:badecb3a9912a9709f86fbade1b2808fca223957120b4081d3a1b38991e33153"
     },
     "owner_lane": "",
     "seed": {
@@ -77,7 +67,6 @@
         "LICENSE",
         "README.md",
         "agent.json",
-        "build.rs",
         "install.sh",
         "llms.txt"
       ],
