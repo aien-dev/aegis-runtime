@@ -281,6 +281,7 @@ mod tests {
     #[tokio::test]
     async fn test_overlapping_pulses_run_a_task_once() {
         let db = Arc::new(Database::open_in_memory().unwrap());
+        // Uses the former task name on purpose, so the legacy alias stays covered.
         db.create_task("hb_once", "max_health", "check").unwrap();
 
         // The first pulse awaits the health probe while the second one lists
