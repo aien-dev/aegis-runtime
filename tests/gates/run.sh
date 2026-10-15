@@ -22,17 +22,6 @@ need_protocols() {
   obs sibling_protocols_commit "\"$(git -C ../aien-protocols rev-parse HEAD 2>/dev/null || echo unknown)\""
 }
 
-# build.rs copies mojo/libaegis_simd.so into the tree when a mojo compiler is on PATH.
-# The hosted runner has no mojo, so its tree stays clean; locally we remove the copy
-# again when this run created it, so the clean_tree_after check mirrors hosted.
-cargo_step() {
-  local so=mojo/libaegis_simd.so had=false
-  [ -e "$so" ] && had=true
-  obs mojo_on_path "$(command -v mojo >/dev/null && echo true || echo false)"
-  "$@"
-  if [ "$had" = false ] && [ -e "$so" ]; then rm -f "$so"; obs removed_generated_so true; fi
-}
-
 case "$step" in
   crumb-verify)
     "${CRUMB:-crumb}" verify .
@@ -43,15 +32,15 @@ case "$step" in
     ;;
   check)
     need_protocols
-    cargo_step cargo check --all-targets
+    cargo check --all-targets
     ;;
   clippy)
     need_protocols
-    cargo_step cargo clippy --all-targets -- -D warnings
+    cargo clippy --all-targets -- -D warnings
     ;;
   test)
     need_protocols
-    cargo_step cargo test --verbose -- --test-threads=1
+    cargo test --verbose -- --test-threads=1
     ;;
   zero-disk-secrets)
     echo "Auditing repository for prohibited plaintext secret files..."

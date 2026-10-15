@@ -1,6 +1,6 @@
 use aegis::{
     start_gateway, AgentEngine, Database, EmbeddedInferenceBackend, GatewayState, HeartbeatEngine,
-    HttpInferenceBackend, InferenceEngine, MojoSimdBridge, SkillRegistry,
+    HttpInferenceBackend, InferenceEngine, SkillRegistry, VectorMath,
 };
 use clap::{Parser, Subcommand};
 use std::path::Path;
@@ -36,7 +36,8 @@ enum Commands {
         #[arg(long, default_value = "embedded")]
         inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
-        max_url: String,
+        /// OpenAI-compatible chat endpoint used with `--inference http` (the local model seat on port 18006 by default).
+        model_url: String,
         #[arg(long)]
         model_path: Option<String>,
         #[arg(long)]
@@ -56,7 +57,8 @@ enum Commands {
         #[arg(long, default_value = "embedded")]
         inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
-        max_url: String,
+        /// OpenAI-compatible chat endpoint used with `--inference http` (the local model seat on port 18006 by default).
+        model_url: String,
         #[arg(long)]
         model_path: Option<String>,
         #[arg(long)]
@@ -72,7 +74,8 @@ enum Commands {
         #[arg(long, default_value = "embedded")]
         inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
-        max_url: String,
+        /// OpenAI-compatible chat endpoint used with `--inference http` (the local model seat on port 18006 by default).
+        model_url: String,
         #[arg(long)]
         model_path: Option<String>,
         #[arg(long)]
@@ -84,7 +87,8 @@ enum Commands {
         #[arg(long, default_value = "embedded")]
         inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
-        max_url: String,
+        /// OpenAI-compatible chat endpoint used with `--inference http` (the local model seat on port 18006 by default).
+        model_url: String,
         #[arg(long)]
         model_path: Option<String>,
         #[arg(long)]
@@ -94,7 +98,7 @@ enum Commands {
         #[arg(long, default_value = "8")]
         max_turns: usize,
     },
-    /// Evaluate Mojo SIMD vector operations
+    /// Evaluate the built-in vector math operations
     Simd {
         #[arg(long, default_value = "10")]
         steps: i32,
@@ -104,7 +108,8 @@ enum Commands {
         #[arg(long, default_value = "embedded")]
         inference: String,
         #[arg(long, default_value = "http://127.0.0.1:18006/v1/chat/completions")]
-        max_url: String,
+        /// OpenAI-compatible chat endpoint used with `--inference http` (the local model seat on port 18006 by default).
+        model_url: String,
         #[arg(long)]
         model_path: Option<String>,
         #[arg(long)]
@@ -116,17 +121,17 @@ enum Commands {
 
 fn resolve_inference_engine(
     mode: &str,
-    max_url: &str,
+    model_url: &str,
     model_path: Option<&str>,
     tokenizer_path: Option<&str>,
 ) -> Result<Arc<dyn InferenceEngine>, Box<dyn std::error::Error>> {
     if mode == "http" {
         info!(
             "Binding AEGIS to external HTTP inference daemon at {}",
-            max_url
+            model_url
         );
         Ok(Arc::new(HttpInferenceBackend::new(
-            Some(max_url.to_string()),
+            Some(model_url.to_string()),
             None,
         )))
     } else {
@@ -174,7 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         allow_non_loopback_bind: false,
         operator_token_file: None,
         inference: "embedded".to_string(),
-        max_url: "http://127.0.0.1:18006/v1/chat/completions".to_string(),
+        model_url: "http://127.0.0.1:18006/v1/chat/completions".to_string(),
         model_path: None,
         tokenizer_path: None,
         db_path: "aegis.sqlite".to_string(),
@@ -186,7 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             allow_non_loopback_bind,
             operator_token_file,
             inference: inference_mode,
-            max_url,
+            model_url,
             model_path,
             tokenizer_path,
             db_path,
@@ -201,7 +206,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let db = Arc::new(Database::open(Path::new(&db_path))?);
             let inference = resolve_inference_engine(
                 &inference_mode,
-                &max_url,
+                &model_url,
                 model_path.as_deref(),
                 tokenizer_path.as_deref(),
             )?;
@@ -241,7 +246,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Heartbeat {
             inference: inference_mode,
-            max_url,
+            model_url,
             model_path,
             tokenizer_path,
             db_path,
@@ -251,7 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let db = Arc::new(Database::open(Path::new(&db_path))?);
             let inference = resolve_inference_engine(
                 &inference_mode,
-                &max_url,
+                &model_url,
                 model_path.as_deref(),
                 tokenizer_path.as_deref(),
             )?;
@@ -282,13 +287,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Ask {
             prompt,
             inference: inference_mode,
-            max_url,
+            model_url,
             model_path,
             tokenizer_path,
         } => {
             let inference = resolve_inference_engine(
                 &inference_mode,
-                &max_url,
+                &model_url,
                 model_path.as_deref(),
                 tokenizer_path.as_deref(),
             )?;
@@ -305,7 +310,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Agent {
             prompt,
             inference: inference_mode,
-            max_url,
+            model_url,
             model_path,
             tokenizer_path,
             db_path,
@@ -315,7 +320,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Task Goal: {}", prompt);
             let inference = resolve_inference_engine(
                 &inference_mode,
-                &max_url,
+                &model_url,
                 model_path.as_deref(),
                 tokenizer_path.as_deref(),
             )?;
@@ -354,51 +359,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Simd { steps } => {
-            println!("=== Mojo SIMD Vector Evaluation ===");
-            let version = MojoSimdBridge::version();
-            let is_accel = MojoSimdBridge::is_mojo_accelerated();
-            println!(
-                "Mojo SIMD Status: {}",
-                if is_accel {
-                    "ACCELERATED (C-ABI .so)"
-                } else {
-                    "NATIVE FALLBACK"
-                }
-            );
-            println!("Kernel Version: {}", version);
+            println!("=== Vector Math Evaluation (pure Rust) ===");
 
             let v1 = [1.0f32, 0.0, 0.0, 0.0];
             let v2 = [0.9f32, 0.1, 0.0, 0.0];
-            let sim = MojoSimdBridge::cosine_similarity_4d(v1, v2);
+            let sim = VectorMath::cosine_similarity_4d(v1, v2);
             println!("Cosine Similarity ([1,0,0,0] vs [0.9,0.1,0,0]): {:.6}", sim);
 
-            let acc = MojoSimdBridge::simd_accumulate(1.0, 1.05, steps);
+            let acc = VectorMath::accumulate(1.0, 1.05, steps);
             println!(
-                "SIMD Accumulate (base=1.0, scale=1.05, steps={}): {:.6}",
+                "Accumulate (base=1.0, scale=1.05, steps={}): {:.6}",
                 steps, acc
             );
 
-            let entropy = MojoSimdBridge::token_entropy([0.7, 0.2, 0.08, 0.02]);
+            let entropy = VectorMath::token_entropy([0.7, 0.2, 0.08, 0.02]);
             println!("Token Entropy (Shannon): {:.6} nats", entropy);
 
             let proj =
-                MojoSimdBridge::token_projection([1.0, 2.0, 3.0, 4.0], [0.5, 0.5, 0.5, 0.5], 1.0);
+                VectorMath::token_projection([1.0, 2.0, 3.0, 4.0], [0.5, 0.5, 0.5, 0.5], 1.0);
             println!("Token Projection: {:.6}", proj);
         }
         Commands::Status {
             inference: inference_mode,
-            max_url,
+            model_url,
             model_path,
             tokenizer_path,
             db_path,
         } => {
             println!("=== AEGIS Sovereign Runtime Status ===");
-            println!("Architecture: Pure native Rust + Mojo 1.1 + In-Process NativeTransformer");
+            println!("Architecture: Pure native Rust + In-Process NativeTransformer");
             println!("Hardware Target: Grace Blackwell GB10 (aarch64-unknown-linux-gnu)");
             println!("Database: SQLite WAL ({})", db_path);
             let inference = resolve_inference_engine(
                 &inference_mode,
-                &max_url,
+                &model_url,
                 model_path.as_deref(),
                 tokenizer_path.as_deref(),
             )?;
@@ -411,14 +405,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "ONLINE"
                 } else {
                     "OFFLINE (Fallback Active)"
-                }
-            );
-            println!(
-                "Mojo SIMD Acceleration: {}",
-                if MojoSimdBridge::is_mojo_accelerated() {
-                    "ACTIVE"
-                } else {
-                    "NATIVE_FALLBACK"
                 }
             );
         }

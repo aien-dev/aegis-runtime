@@ -120,7 +120,8 @@ impl HeartbeatEngine {
             }
 
             let res_text = match task.task_type.as_str() {
-                "max_health" => {
+                // "max_health" is the former name, kept so tasks already queued under it still run.
+                "model_health" | "max_health" => {
                     let is_healthy = if let Some(ref inf) = self.inference {
                         inf.check_health().await
                     } else {
@@ -133,10 +134,9 @@ impl HeartbeatEngine {
                     };
 
                     if is_healthy {
-                        "MAX local inference engine verified ACTIVE on port 18006".to_string()
+                        "Local model seat verified ACTIVE on port 18006".to_string()
                     } else {
-                        "MAX local inference engine unreachable or offline on port 18006"
-                            .to_string()
+                        "Local model seat unreachable or offline on port 18006".to_string()
                     }
                 }
                 "build_monitor" | "shell_exec" => {
@@ -261,7 +261,7 @@ mod tests {
     #[tokio::test]
     async fn test_heartbeat_pulse_and_task_execution() {
         let db = Arc::new(Database::open_in_memory().unwrap());
-        db.create_task("hb1", "max_health", "check").unwrap();
+        db.create_task("hb1", "model_health", "check").unwrap();
         db.create_task("hb2", "consolidate_memory", "sync").unwrap();
         db.create_task("hb3", "shell_exec", "echo 'heartbeat task success'")
             .unwrap();

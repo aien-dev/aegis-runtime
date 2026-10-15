@@ -10,8 +10,6 @@ inputs:
   - Cargo.lock
   - src/
   - tests/
-  - build.rs
-  - mojo/
   - tests/gates/
 run:
   exec: tests/gates/run.sh

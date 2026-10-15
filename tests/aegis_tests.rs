@@ -1,6 +1,6 @@
 use aegis::{
     create_router, AgentEngine, Database, GatewayState, HeartbeatEngine, HttpInferenceBackend,
-    MojoSimdBridge, SkillRegistry, VaultResolver, REDACTED_MARKER,
+    SkillRegistry, VaultResolver, VectorMath, REDACTED_MARKER,
 };
 use axum::{
     body::Body,
@@ -466,18 +466,18 @@ async fn test_gateway_websocket_lifecycle() {
 }
 
 #[tokio::test]
-async fn test_mojo_simd_bridge_operations() {
+async fn test_vector_math_operations() {
     let v1 = [1.0f32, 0.0, 0.0, 0.0];
     let v2 = [1.0f32, 0.0, 0.0, 0.0];
-    let sim = MojoSimdBridge::cosine_similarity_4d(v1, v2);
+    let sim = VectorMath::cosine_similarity_4d(v1, v2);
     assert!((sim - 1.0).abs() < 1e-4);
 
     let tokens = [2.0f32, 4.0, 6.0, 8.0];
     let weights = [0.25f32, 0.25, 0.25, 0.25];
-    let proj = MojoSimdBridge::token_projection(tokens, weights, 2.0);
+    let proj = VectorMath::token_projection(tokens, weights, 2.0);
     assert!((proj - 7.0).abs() < 1e-4);
 
-    let entropy = MojoSimdBridge::token_entropy([0.5, 0.5, 0.0, 0.0]);
+    let entropy = VectorMath::token_entropy([0.5, 0.5, 0.0, 0.0]);
     assert!((entropy - std::f32::consts::LN_2).abs() < 1e-4);
     assert!(entropy > 0.0);
 }
@@ -981,53 +981,38 @@ fn test_vault_streaming_redaction_and_zero_disk_keys() {
 }
 
 #[test]
-fn test_mojo_simd_mathematical_invariants_and_edge_cases() {
+fn test_vector_math_invariants_and_edge_cases() {
     // Zero vectors
     let zero = [0.0f32, 0.0, 0.0, 0.0];
     let non_zero = [1.0f32, 2.0, 3.0, 4.0];
-    assert_eq!(
-        MojoSimdBridge::cosine_similarity_4d_fallback(zero, non_zero),
-        0.0
-    );
-    assert_eq!(
-        MojoSimdBridge::cosine_similarity_4d_fallback(zero, zero),
-        0.0
-    );
+    assert_eq!(VectorMath::cosine_similarity_4d(zero, non_zero), 0.0);
+    assert_eq!(VectorMath::cosine_similarity_4d(zero, zero), 0.0);
 
     // Identical vectors
     let v = [0.5f32, -0.5, 0.5, -0.5];
-    let sim_ident = MojoSimdBridge::cosine_similarity_4d_fallback(v, v);
+    let sim_ident = VectorMath::cosine_similarity_4d(v, v);
     assert!((sim_ident - 1.0).abs() < 1e-4);
 
     // Orthogonal vectors
     let o1 = [1.0f32, 0.0, 0.0, 0.0];
     let o2 = [0.0f32, 1.0, 0.0, 0.0];
-    assert_eq!(MojoSimdBridge::cosine_similarity_4d_fallback(o1, o2), 0.0);
+    assert_eq!(VectorMath::cosine_similarity_4d(o1, o2), 0.0);
 
     // Opposite vectors
     let opp = [-0.5f32, 0.5, -0.5, 0.5];
-    let sim_opp = MojoSimdBridge::cosine_similarity_4d_fallback(v, opp);
+    let sim_opp = VectorMath::cosine_similarity_4d(v, opp);
     assert!((sim_opp - (-1.0)).abs() < 1e-4);
 
     // NaN and Inf handling
     let nan_v = [f32::NAN, 1.0, 2.0, 3.0];
     let inf_v = [f32::INFINITY, 1.0, 2.0, 3.0];
-    assert_eq!(
-        MojoSimdBridge::cosine_similarity_4d_fallback(nan_v, non_zero),
-        0.0
-    );
-    assert_eq!(
-        MojoSimdBridge::cosine_similarity_4d_fallback(inf_v, non_zero),
-        0.0
-    );
+    assert_eq!(VectorMath::cosine_similarity_4d(nan_v, non_zero), 0.0);
+    assert_eq!(VectorMath::cosine_similarity_4d(inf_v, non_zero), 0.0);
 
     // Temperature scale boundaries
-    assert_eq!(MojoSimdBridge::temperature_scale_fallback(4.0, 0.0), 4.0);
-    assert_eq!(
-        MojoSimdBridge::temperature_scale_fallback(4.0, f32::NAN),
-        0.0
-    );
-    let normal_scaled = MojoSimdBridge::temperature_scale_fallback(8.0, 2.0);
+    assert_eq!(VectorMath::temperature_scale(4.0, 0.0), 4.0);
+    assert_eq!(VectorMath::temperature_scale(4.0, f32::NAN), 0.0);
+    let normal_scaled = VectorMath::temperature_scale(8.0, 2.0);
     assert!((normal_scaled - 4.0).abs() < 1e-4);
 }
 

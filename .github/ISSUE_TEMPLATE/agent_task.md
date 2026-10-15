@@ -10,7 +10,7 @@ assignees: ""
 [Clear description of the engineering objective]
 
 ## Constraints
-- Architecture: Pure native Rust and Mojo
+- Architecture: Pure native Rust
 - Secrets: Hardware TPM vault only (Zero disk secrets)
 - Voice: Unslop standard (Zero em dashes and en dashes)
 - PR Discipline: Feature branch and PR squash merge only
