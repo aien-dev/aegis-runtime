@@ -26,9 +26,9 @@ use tracing::info;
 use crate::agent::{AgentEngine, AgentStep};
 use crate::heartbeat::HeartbeatEngine;
 use crate::inference::InferenceEngine;
-use crate::mojo_bridge::MojoSimdBridge;
 use crate::persistence::Database;
 use crate::skills::{SkillExecutionRequest, SkillRegistry};
+use crate::vector_math::VectorMath;
 
 #[derive(Clone)]
 pub struct GatewayState {
@@ -51,8 +51,6 @@ pub struct HealthResponse {
     pub heartbeat_interval_seconds: u64,
     pub total_heartbeat_ticks: u64,
     pub database_mode: &'static str,
-    pub mojo_simd_accelerated: bool,
-    pub mojo_simd_version: i32,
     pub zero_disk_secrets: bool,
 }
 
@@ -60,8 +58,6 @@ pub async fn health_handler(State(state): State<GatewayState>) -> impl IntoRespo
     let uptime = state.start_time.elapsed().as_secs();
     let ticks = state.heartbeat.tick_count();
     let model = state.inference.model_id();
-    let mojo_active = MojoSimdBridge::is_mojo_accelerated();
-    let mojo_ver = MojoSimdBridge::version();
 
     Json(HealthResponse {
         status: "healthy",
@@ -71,8 +67,6 @@ pub async fn health_handler(State(state): State<GatewayState>) -> impl IntoRespo
         heartbeat_interval_seconds: state.heartbeat.interval_secs(),
         total_heartbeat_ticks: ticks,
         database_mode: "sqlite-wal",
-        mojo_simd_accelerated: mojo_active,
-        mojo_simd_version: mojo_ver,
         zero_disk_secrets: true,
     })
 }
@@ -198,7 +192,6 @@ pub async fn openai_completions_handler(
         let supported_model = state.inference.model_id();
         if req_model != &supported_model
             && req_model != "atlas-lightning-omni"
-            && req_model != "modular-max"
             && req_model != "aegis-default"
             && req_model != "default"
         {
@@ -573,12 +566,10 @@ async fn handle_socket(mut socket: WebSocket, state: GatewayState) {
                                 let _ = socket.send(Message::Text(out.to_string())).await;
                             }
                             "simd_eval" => {
-                                let sim = MojoSimdBridge::cosine_similarity(&[1.0, 0.0, 0.0, 0.0], &[1.0, 0.0, 0.0, 0.0]);
+                                let sim = VectorMath::cosine_similarity(&[1.0, 0.0, 0.0, 0.0], &[1.0, 0.0, 0.0, 0.0]);
                                 let out = json!({
                                     "type": "simd_result",
                                     "cosine_similarity": sim,
-                                    "accelerated": MojoSimdBridge::is_mojo_accelerated(),
-                                    "version": MojoSimdBridge::version(),
                                 });
                                 let _ = socket.send(Message::Text(out.to_string())).await;
                             }

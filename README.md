@@ -4,7 +4,7 @@
 
 Copyright (c) 2026 Drake Stapleton <aien@aienos.com> and AIEN Contributors. Authored by Drake Stapleton in collaboration with AIEN.
 
-Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration kernels, built for NVIDIA Grace Blackwell GB10 hardware. Model inference goes to a local Modular MAX server when started with `--inference http`. The default `--inference embedded` backend is a mock: it loads no model and ignores `--model-path` and `--tokenizer-path`.
+Sovereign agent runtime written in native Rust, built for NVIDIA Grace Blackwell GB10 hardware. Model inference goes to the local model seat (any OpenAI-compatible server on port 18006) when started with `--inference http`. The default `--inference embedded` backend is a mock: it loads no model and ignores `--model-path` and `--tokenizer-path`.
 
 ## Architecture
 
@@ -15,14 +15,14 @@ Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration k
                                   +--------------+--------------+
                                                  |
 +---------------------------+     +--------------v--------------+     +-----------------------------+
-|   Axum Control Plane      |     |     Heartbeat Engine        |     |  Modular MAX (optional)     |
+|   Axum Control Plane      |     |     Heartbeat Engine        |     |  Local model seat (optional)|
 |   - Port 18096            | <-> |     - Autonomous Tick [2]   | <-> |      - Port 18006           |
 |   - WebSockets & SSE      |     |     - State Machine         |     |      - GB10 Local Weights   |
 |   - REST API              |     |     - Task Evaluation       |     |      - TTFT per model [1]   |
 +---------------------------+     +--------------+--------------+     +-----------------------------+
                                                  |
                                   +--------------v--------------+
-                                  |   Mojo 1.1 SIMD Bridge      |
+                                  |   Rust Vector Math          |
                                   |   - Vector Cosine & Entropy |
                                   |   - SQLite WAL Persistence  |
                                   +-----------------------------+
@@ -40,11 +40,11 @@ Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration k
 2. **Heartbeat Engine**:
    Autonomous polling loop (30 seconds under `aegis heartbeat`, 60 seconds by default under `aegis serve`) that claims pending tasks, runs them, and emits a pulse receipt.
 
-3. **Local Modular MAX Inference** (optional):
-   With `--inference http`, requests go to the OpenAI-style endpoint given by `--max-url` (default `http://127.0.0.1:18006/v1/chat/completions`) using the model name `atlas-lightning-omni`. Without it, the mock backend answers.
+3. **Local Model Seat Inference** (optional):
+   With `--inference http`, requests go to the OpenAI-style endpoint given by `--model-url` (default `http://127.0.0.1:18006/v1/chat/completions`) using the model name `atlas-lightning-omni`. Without it, the mock backend answers.
 
-4. **Mojo 1.1 SIMD Kernels**:
-   Vector cosine similarity, Shannon entropy, and linear projection using Mojo SIMD vector primitives via C-ABI FFI (`libloading`).
+4. **Vector Math**:
+   Vector cosine similarity, Shannon entropy, linear projection, and temperature scaling in plain Rust (`src/vector_math.rs`).
 
 5. **Secret resolution**:
    No plaintext secret files. `VaultResolver` asks `atlas-vault`, then keeps the value in memory. It is a client of that provider, not a TPM. The process environment is read only when `AIEN_DEV_SECRET_FALLBACK=1`. Output is redacted with `[REDACTED_BY_ATLAS_VAULT]`.
@@ -57,8 +57,7 @@ Sovereign agent runtime written in native Rust with Mojo 1.1 SIMD acceleration k
 ### Prerequisites
 - Rust 1.80+ (`cargo`)
 - A checkout of [aien-dev/aien-protocols](https://github.com/aien-dev/aien-protocols) next to this one at `../aien-protocols` (six path dependencies in `Cargo.toml`)
-- Optional: Mojo 1.1. `build.rs` builds `mojo/aegis_simd.mojo` into a shared library when `mojo` is on the PATH; otherwise the SIMD functions run as plain Rust (`aegis status` shows `NATIVE_FALLBACK`).
-- Optional: a Modular MAX server, only for `--inference http`
+- Optional: an OpenAI-compatible model server on port 18006 (the local model seat), only for `--inference http`
 - Linux aarch64 (Grace Blackwell GB10) or x86_64
 
 ### Compilation
@@ -87,7 +86,7 @@ aegis tick
 # Run the heartbeat loop on its own (30 second default)
 aegis heartbeat
 
-# Send one prompt to the inference backend (add --inference http to reach MAX)
+# Send one prompt to the inference backend (add --inference http to reach the local model seat)
 aegis ask "Analyze system health and pending tasks"
 
 # Run an agent task with multi-turn tool calling (default 8 turns)
@@ -96,16 +95,16 @@ aegis agent "Summarize the repository status" --max-turns 8
 # Check engine status
 aegis status
 
-# Print a small SIMD kernel evaluation and whether Mojo or the Rust fallback is active
+# Print a small vector math evaluation
 aegis simd --steps 10
 ```
 
 ## Mathematical verification
 
-SIMD kernels are checked in Rust against an analytical reference and the committed vectors in `tests/fixtures/simd_math_vectors.json`:
+The vector math functions are checked against an analytical reference and the committed vectors in `tests/fixtures/simd_math_vectors.json`:
 
 ```bash
-cargo test --lib mojo_bridge::tests::test_simd_analytical_parity
+cargo test --lib vector_math::tests::test_analytical_parity
 ```
 
 ## License

@@ -70,14 +70,14 @@
         }
       ],
       "children_root": "sha256:05cb4db01c3494940598a025e8efa62d57c3c1a3eaac2c2681e0ba0433f5f3b3",
-      "compiled_at": "2026-10-13T02:40:48Z",
+      "compiled_at": "2026-10-15T11:23:29Z",
       "compiler": "crumb-compile/1",
-      "digest": "sha256:32915e3f9b0295a3b3f99438d6fbbe9c495aa296b5910203ba656ed8553ceb7c",
+      "digest": "sha256:9342bca2f46670fbe8ea6e4fd4adb136dc60ef9c3cfebade427ed268d92c9472",
       "evidence_files": 0,
       "evidence_root": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "files": 49,
-      "generated_at_commit": "8724580bdb385ec058f937912c2b88e006a67dc6",
-      "source_tree": "sha256:f893d1036d10c8e9dcf3ffe774949e2f06af424e03afde6f7a35fbf8b07b2410"
+      "generated_at_commit": "70caebf44b4908ede6e38569b4ef6a809e5999cc",
+      "source_tree": "sha256:c15c6eea62a588cdf4ae3d56f7203626994d55d493546e17b3d3c7833d610a11"
     },
     "owner_lane": "",
     "seed": {
@@ -90,11 +90,11 @@
         "inference.rs",
         "lib.rs",
         "main.rs",
-        "mojo_bridge.rs",
         "policy_guard.rs",
         "security.rs",
         "skills.rs",
-        "vault.rs"
+        "vault.rs",
+        "vector_math.rs"
       ],
       "purpose_auto": "Directory src. Purpose not yet described by a human."
     }

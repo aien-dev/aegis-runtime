@@ -1,18 +1,18 @@
 # aegis-runtime
-> Ultra-high-performance sovereign agent runtime in native Rust, Mojo 1.1 SIMD kernels, and Modular MAX local inference on Grace Blackwell GB10. Replaces legacy Node.js/TypeScript runtimes with sub-millisecond execution, zero cloud token bills, and proactive autonomous heartbeats.
+> Ultra-high-performance sovereign agent runtime in native Rust with local model inference on Grace Blackwell GB10. Replaces legacy Node.js/TypeScript runtimes with sub-millisecond execution, zero cloud token bills, and proactive autonomous heartbeats.
 
 ## Overview
 - Repository: https://github.com/aien-dev/aegis-runtime
 - License: Apache-2.0 WITH LLVM-exception, with the nonbinding COVENANT.md.
-- Language: Rust 2021 + Mojo 1.1
+- Language: Rust 2021
 - Runtime: Pure native compiled binaries. Zero Node.js. Zero Python daemons.
 
 ## Architecture
 - Axum Gateway: Sub-millisecond WebSockets, Server-Sent Events (SSE), and REST API on port 18096.
 - Heartbeat Engine: Proactive autonomous background tick loop (60s period). Executes digital colleague workflows without requiring human prompts.
-- Inference Engine: Direct HTTP client to Modular MAX serving local weights on port 18006 (atlas-lightning-omni on GB10). TTFT < 50ms with SSE streaming.
+- Inference Engine: Direct HTTP client to the local model seat, any OpenAI-compatible server on port 18006 (atlas-lightning-omni on GB10), with SSE streaming.
 - Persistence: Embedded SQLite with Write-Ahead-Logging (WAL) mode for sub-millisecond ACID history and state storage.
-- Mojo SIMD Bridge: Zero-copy C-ABI FFI linking Mojo 1.1 vector kernels for cosine similarity and attention operations.
+- Vector Math: Plain Rust cosine similarity, token entropy, projection, and temperature scaling (src/vector_math.rs).
 - Security: Hardware TPM key vault (atlas-vault). Zero disk secrets. Dynamic memory resolution and automatic secret redaction ([REDACTED_BY_ATLAS_VAULT]).
 
 ## Quickstart
@@ -22,12 +22,12 @@ cargo build --release
 ```
 
 ## Endpoints
-- `GET /health` & `GET /api/v1/health`: Engine health, model ID, uptime, and Mojo SIMD status.
+- `GET /health` & `GET /api/v1/health`: Engine health, model ID, uptime, and heartbeat counters.
 - `POST /v1/chat/completions`: OpenAI-compatible completions with multi-turn chat and SSE token streaming.
 - `GET /v1/models`: OpenAI-compatible models listing.
 - `GET /api/v1/skills`: List registered skills.
 - `POST /api/v1/skills/execute`: Execute a registered skill.
-- `POST /api/v1/chat`: Direct inference request to local MAX.
+- `POST /api/v1/chat`: Direct inference request to the local model seat.
 - `POST /api/v1/heartbeat/tick`: Force an immediate heartbeat tick.
 - `POST /api/v1/tasks` & `GET /api/v1/tasks`: Task queue creation and listing.
 - `POST /api/v1/shell`: Local shell execution.

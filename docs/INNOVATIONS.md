@@ -1,8 +1,8 @@
 # AEGIS Architectural Innovations
 
-### Pure Compiled Systems Architecture, Mojo 1.1 SIMD Bridge, and Hardware TPM Vault
+### Pure Compiled Systems Architecture and Hardware TPM Vault
 
-`aegis-runtime` is an autonomous agent runtime engineered in pure native compiled Rust and Mojo 1.1. It replaces bloated, interpreted Node.js frameworks with a sub-millisecond compiled engine optimized for local workstation hardware.
+`aegis-runtime` is an autonomous agent runtime engineered in pure native compiled Rust. It replaces bloated, interpreted Node.js frameworks with a sub-millisecond compiled engine optimized for local workstation hardware.
 
 ---
 
@@ -14,11 +14,11 @@ The control plane runs on Axum and Tokio (`src/gateway.rs`), providing high-conc
 - Zero garbage collection pauses or runtime interpreter bloat.
 - Direct memory-mapped operations.
 
-### Mojo 1.1 SIMD Bridge (`src/mojo_bridge.rs`)
-Vector arithmetic and high-dimensional similarity checks are delegated to Mojo 1.1 via a dynamic C-ABI foreign function interface (`libsimd_bridge.so`) with an automated native Rust fallback:
-- **4D Vector Cosine Similarity**: Evaluates semantic orientation between token embeddings with SIMD vectorization.
+### Vector Math (`src/vector_math.rs`)
+Small fixed-size vector arithmetic runs in plain Rust with no external libraries:
+- **4D Vector Cosine Similarity**: Evaluates semantic orientation between token embeddings.
 - **Token Entropy Estimation**: Computes probability distribution entropy without allocating intermediate heap structures.
-- **Token Projection**: Applies linear transformations and temperature scaling in a single hardware pass.
+- **Token Projection and Temperature Scaling**: Applies a weighted sum plus bias, and divides logits by temperature.
 
 ---
 
@@ -26,7 +26,7 @@ Vector arithmetic and high-dimensional similarity checks are delegated to Mojo 1
 
 ### Multi-Turn Tool Calling Loop
 The `AgentEngine` implements an autonomous reasoning and execution loop:
-1. **Thought & Tool Formulation**: Generates structured reasoning and tool calls against local Modular MAX models.
+1. **Thought & Tool Formulation**: Generates structured reasoning and tool calls against the configured inference backend (the local model seat on port 18006 with `--inference http`).
 2. **Deterministic Tool Execution**: Dispatches tool invocations to the native `SkillRegistry`.
 3. **Multi-Turn Context Preservation**: Retains dialogue history, tool outputs, and execution receipts across iterative steps until the task goal is satisfied.
 
@@ -65,7 +65,8 @@ Operational tasks and event logs persist in SQLite using Write-Ahead Logging (WA
 ## 5. Hardware Target and Performance Metrics
 
 Verified on NVIDIA Grace Blackwell GB10:
-- **Modular MAX Local Endpoint**: `http://127.0.0.1:18006/v1/chat/completions`.
+- **Local Model Seat Endpoint**: `http://127.0.0.1:18006/v1/chat/completions` (any OpenAI-compatible server).
+- The three figures below were measured while the seat ran Modular MAX, which was removed from AIEN on 2026-10-15. They have not been re-measured since.
 - **Active GPU Utilization**: 94% to 96% under sustained multi-turn generation.
 - **Inference Speed**: 20.7 tokens per second sustained across multi-turn reasoning loops.
 - **Memory Footprint**: < 35 MB resident set size for the core runtime engine.

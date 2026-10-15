@@ -37,11 +37,11 @@ fn test_aegis_session_to_canonical_agent_state_and_digest() {
     session.budget.max_total_tokens = 8192;
 
     let agent_id = AgentId::new_v4();
-    let state: AgentState = session.to_agent_state(&agent_id, "GB10-MAX-Qwen");
+    let state: AgentState = session.to_agent_state(&agent_id, "GB10-local-Qwen");
 
     assert_eq!(state.abi_version, ProtocolVersion::new(1, 0));
     assert_eq!(state.agent.agent_id, agent_id);
-    assert_eq!(state.agent.model_profile, "GB10-MAX-Qwen");
+    assert_eq!(state.agent.model_profile, "GB10-local-Qwen");
     assert_eq!(state.session.session_id, session.id.clone().into());
     assert_eq!(
         state.objective.as_ref().unwrap().description,
@@ -66,8 +66,8 @@ fn test_canonical_agent_state_branching_lineage() {
     let child = parent.branch();
 
     let agent_id = AgentId::new_v4();
-    let parent_state = parent.to_agent_state(&agent_id, "GB10-MAX-Qwen");
-    let child_state = child.to_agent_state(&agent_id, "GB10-MAX-Qwen");
+    let parent_state = parent.to_agent_state(&agent_id, "GB10-local-Qwen");
+    let child_state = child.to_agent_state(&agent_id, "GB10-local-Qwen");
 
     assert!(parent_state.parent.is_none());
     assert!(child_state.parent.is_some());

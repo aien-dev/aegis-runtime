@@ -40,37 +40,37 @@ pub struct ChatTurnResponse {
 }
 
 #[derive(Deserialize)]
-struct MaxChoice {
-    message: MaxMessage,
+struct ChatChoice {
+    message: ChatMessage,
 }
 
 #[derive(Deserialize)]
-struct MaxMessage {
+struct ChatMessage {
     content: Option<String>,
     reasoning: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct MaxResponse {
-    choices: Vec<MaxChoice>,
+struct ChatResponse {
+    choices: Vec<ChatChoice>,
 }
 
 #[derive(Deserialize)]
-struct MaxChoiceWithTools {
-    message: MaxMessageWithTools,
+struct ChatChoiceWithTools {
+    message: ChatMessageWithTools,
     finish_reason: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct MaxMessageWithTools {
+struct ChatMessageWithTools {
     content: Option<String>,
     reasoning: Option<String>,
     tool_calls: Option<Vec<ToolCallItem>>,
 }
 
 #[derive(Deserialize)]
-struct MaxResponseWithTools {
-    choices: Vec<MaxChoiceWithTools>,
+struct ChatResponseWithTools {
+    choices: Vec<ChatChoiceWithTools>,
 }
 
 /// Unified inference engine interface supporting both in-process embedded
@@ -196,7 +196,7 @@ impl InferenceEngine for HttpInferenceBackend {
         match self.client.post(&self.endpoint).json(&body).send().await {
             Ok(res) => {
                 if res.status().is_success() {
-                    let parsed: MaxResponse = res.json().await?;
+                    let parsed: ChatResponse = res.json().await?;
                     if let Some(choice) = parsed.choices.into_iter().next() {
                         if let Some(content) = choice.message.content {
                             if !content.trim().is_empty() {
@@ -213,7 +213,7 @@ impl InferenceEngine for HttpInferenceBackend {
                 } else {
                     let err_status = res.status();
                     let err_text = res.text().await.unwrap_or_default();
-                    warn!("MAX inference error {}: {}", err_status, err_text);
+                    warn!("Model seat inference error {}: {}", err_status, err_text);
                     Err(
                         anyhow::anyhow!("Inference endpoint error {}: {}", err_status, err_text)
                             .into(),
@@ -221,7 +221,10 @@ impl InferenceEngine for HttpInferenceBackend {
                 }
             }
             Err(e) => {
-                warn!("Cannot reach MAX endpoint at {}: {}", self.endpoint, e);
+                warn!(
+                    "Cannot reach model seat endpoint at {}: {}",
+                    self.endpoint, e
+                );
                 Err(anyhow::anyhow!("Inference endpoint unreachable: {}", e).into())
             }
         }
@@ -250,7 +253,7 @@ impl InferenceEngine for HttpInferenceBackend {
         match self.client.post(&self.endpoint).json(&body).send().await {
             Ok(res) => {
                 if res.status().is_success() {
-                    let parsed: MaxResponseWithTools = res.json().await?;
+                    let parsed: ChatResponseWithTools = res.json().await?;
                     if let Some(choice) = parsed.choices.into_iter().next() {
                         return Ok(ChatTurnResponse {
                             content: choice.message.content,
@@ -268,7 +271,7 @@ impl InferenceEngine for HttpInferenceBackend {
                 } else {
                     let err_status = res.status();
                     let err_text = res.text().await.unwrap_or_default();
-                    warn!("MAX inference error {}: {}", err_status, err_text);
+                    warn!("Model seat inference error {}: {}", err_status, err_text);
                     Err(
                         anyhow::anyhow!("Inference endpoint error {}: {}", err_status, err_text)
                             .into(),
@@ -276,7 +279,10 @@ impl InferenceEngine for HttpInferenceBackend {
                 }
             }
             Err(e) => {
-                warn!("Cannot reach MAX endpoint at {}: {}", self.endpoint, e);
+                warn!(
+                    "Cannot reach model seat endpoint at {}: {}",
+                    self.endpoint, e
+                );
                 Err(anyhow::anyhow!("Inference endpoint unreachable: {}", e).into())
             }
         }
@@ -300,7 +306,7 @@ impl InferenceEngine for HttpInferenceBackend {
         if !res.status().is_success() {
             let status = res.status();
             let text = res.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("MAX streaming error {}: {}", status, text).into());
+            return Err(anyhow::anyhow!("Model seat streaming error {}: {}", status, text).into());
         }
 
         let stream = res

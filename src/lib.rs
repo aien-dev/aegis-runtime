@@ -7,13 +7,13 @@ pub mod failure;
 pub mod gateway;
 pub mod heartbeat;
 pub mod inference;
-pub mod mojo_bridge;
 pub mod orchestration;
 pub mod persistence;
 pub mod security;
 pub mod sessions;
 pub mod skills;
 pub mod vault;
+pub mod vector_math;
 
 pub use agent::{AgentEngine, AgentExecutionResult, AgentStep, FailurePolicy, ToolExecutionRecord};
 pub use auth::{resolve_bind_addr, OperatorAuth};
@@ -31,7 +31,6 @@ pub use inference::{
     ChatStream, ChatTurnResponse, EmbeddedInferenceBackend, HttpInferenceBackend, InferenceEngine,
     ProtocolInferenceBackend, ToolCallFunction, ToolCallItem,
 };
-pub use mojo_bridge::MojoSimdBridge;
 pub use orchestration::workflow::{
     TaskId, TaskOutcome, TaskRunner, TaskState, WorkflowConfig, WorkflowError, WorkflowExecutor,
     WorkflowReport, WorkflowSpec, WorkflowStatus,
@@ -49,6 +48,7 @@ pub use sessions::{
 };
 pub use skills::{SkillDefinition, SkillExecutionRequest, SkillExecutionResponse, SkillRegistry};
 pub use vault::{VaultResolver, REDACTED_MARKER};
+pub use vector_math::VectorMath;
 
 // Re-export Canonical AIEN Agent State ABI and Protocol Types
 pub use aien_agent_state_abi::{
