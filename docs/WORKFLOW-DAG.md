@@ -25,7 +25,7 @@ Absent before this change: prerequisite edges between tasks, readiness tracking,
 ## Model
 
 - `TaskId` newtype. `WorkflowSpec::builder().add_task(id, &[deps], runner)...build()` rejects empty ids, duplicate tasks, duplicate edges, self dependency, unknown predecessors and cycles with typed `WorkflowError`.
-- `TaskState {Pending, Ready, Running, WaitingForApproval, Completed, Failed(FailureRecord), Cancelled, Skipped{prerequisite}}`.
+- `TaskState {Pending, Ready, Running, WaitingForApproval, Completed, Failed(FailureRecord), Cancelled, Skipped{prerequisite}, Uncertain(FailureRecord)}`. `Uncertain` (issue #55) means "not known whether the effect happened"; it is not terminal.
 - `TaskRunner` is the task body and returns `TaskOutcome {Completed(value), Failed(ToolFault), ApprovalPending, Cancelled}`. `certainty_on_interrupt()` says what is known about effects if the DAG interrupts the body (timeout, cancel); the default is `Uncertain`.
 - `WorkflowConfig {run_id, session_id, max_parallel, per_task_timeout, total_budget}`.
 
@@ -34,14 +34,15 @@ Absent before this change: prerequisite edges between tasks, readiness tracking,
 - A dependent becomes Ready only when every prerequisite is `Completed`.
 - A prerequisite that is `Failed`, `Cancelled` or `Skipped` makes the dependent `Skipped` with a `FailureRecord` of class `Rejected`, certainty `NoEffect`, cause `prerequisite failed: <id>`. This is transitive.
 - `WaitingForApproval` is not success and not terminal. Dependents stay `Pending`; the report lists them in `unfinished` and the status is `WaitingForApproval`.
-- The DAG never retries or reschedules anything. An `Uncertain` outcome runs once and is final.
-- Timeout gives `Failed` with class `Timeout` and the runner's certainty. Cancellation (token or total budget) cancels running tasks and every Pending/Ready task and starts nothing new.
+- The DAG never retries or reschedules anything. An `Uncertain` outcome runs once and is never retried here.
+- Timeout gives `Failed` with class `Timeout` and the runner's certainty, unless that certainty is `Uncertain`: then the task becomes `Uncertain` (#55). Cancellation (token or total budget) cancels running tasks and every Pending/Ready task and starts nothing new; a running task whose certainty is `Uncertain` becomes `Uncertain` instead of `Cancelled`.
+- Dependents of an `Uncertain` task are neither run nor skipped. They stay `Pending`, are listed in `unfinished`, and `WorkflowReport.blocked_behind_uncertain` names the uncertain task each one waits on (transitively). A task with both an `Uncertain` and a `Failed` prerequisite is still skipped by the failed one.
 - Parallelism is bounded by a `tokio::sync::Semaphore`. The coordinator only awaits; task bodies run on spawned tasks. No `block_on`.
 - The DAG authorizes nothing and caches no decision. Real effects go through the agent/skill gate path or `ExecutionAuthority` inside the task body.
 
 ## Events and replay
 
-Every transition takes a workflow sequence number under one lock, together with the state change, and is published in that same critical section. New `AegisEvent` variants: `WorkflowTaskReady/Started/Completed/Waiting/Failed/Cancelled/Skipped`, `WorkflowFinished`. They carry `workflow_seq` and go out with `EventEnvelope.sequence` set to it, so sorting by sequence replays the exact order. With `max_parallel = 1` the whole order is fixed for a given spec; with more parallelism the order of simultaneous completions follows real completion order, but the sequence is still gapless and dependency-consistent. Existing variants are unchanged; the canonical mapping returns `None` for the new ones.
+Every transition takes a workflow sequence number under one lock, together with the state change, and is published in that same critical section. New `AegisEvent` variants: `WorkflowTaskReady/Started/Completed/Waiting/Failed/Cancelled/Skipped`, `WorkflowFinished`. They carry `workflow_seq` and go out with `EventEnvelope.sequence` set to it, so sorting by sequence replays the exact order. With `max_parallel = 1` the whole order is fixed for a given spec; with more parallelism the order of simultaneous completions follows real completion order, but the sequence is still gapless and dependency-consistent. Existing variants are unchanged; the canonical mapping returns `None` for the new ones. The `Uncertain` task state (#55) has no bus variant yet (#55 item 4): its ledger event `uncertain` is written in sequence, and the bus stays silent rather than publish a false Failed or Cancelled. `WorkflowStatus` still reads `Failed` or `Cancelled` when a task is uncertain; the "needs reconciliation" status is #55 item 2, not in the first cut.
 
 Results: `WorkflowSnapshot.results` maps task id to a sha256 digest of the result value. Failure records for Failed, Skipped and Cancelled tasks are in `WorkflowReport.failures`.
 
