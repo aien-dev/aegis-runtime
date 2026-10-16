@@ -1,5 +1,7 @@
 # aegis-runtime
 
+**Status:** Not part of the WHOLE-SYSTEM-E2E v1 release (Drake, 2026-10-10). The production runtime in [aien-sovereign-core](https://github.com/aien-spark/aien-sovereign-core) carries the mandatory capability checks, the approval desk, effect authorization and fail-closed behaviour, and WHOLE-SYSTEM-E2E measures them there.
+
 ## Copyright
 
 Copyright (c) 2026 Drake Stapleton <aien@aienos.com> and AIEN Contributors. Authored by Drake Stapleton in collaboration with AIEN.
@@ -41,7 +43,9 @@ Sovereign agent runtime written in native Rust, built for NVIDIA Grace Blackwell
    Autonomous polling loop (30 seconds under `aegis heartbeat`, 60 seconds by default under `aegis serve`) that claims pending tasks, runs them, and emits a pulse receipt.
 
 3. **Local Model Seat Inference** (optional):
-   With `--inference http`, requests go to the OpenAI-style endpoint given by `--model-url` (default `http://127.0.0.1:18006/v1/chat/completions`) using the model name `atlas-lightning-omni`. Without it, the mock backend answers.
+   With `--inference http`, requests go to the OpenAI-style endpoint given by `--model-url` (default `http://127.0.0.1:18006/v1/chat/completions`) using the model name `atlas-lightning-omni`. Without it, the mock backend answers. The mock (`MockInferenceClient` from aien-protocols) returns a mock answer and loads no model.
+
+   Port 18006 was the old Modular MAX serving endpoint. A queued `model_health` heartbeat task (or one still queued under its old name `max_health`) checks the model seat through the configured backend, or polls `http://127.0.0.1:18006/v1/models` directly when no backend is set, and reports whether anything answers on port 18006. The project does not use MAX or CUDA on its production path (decision of 2026-10-02); the production runtime in aien-sovereign-core runs its GPU path through AIEN's own Omega kernels.
 
 4. **Vector Math**:
    Vector cosine similarity, Shannon entropy, linear projection, and temperature scaling in plain Rust (`src/vector_math.rs`).
